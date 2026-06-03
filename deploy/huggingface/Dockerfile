@@ -18,6 +18,9 @@ ENV HOME=/home/user \
 
 WORKDIR /home/user/app
 
+# Bust the build cache whenever master changes, so a rebuild always pulls the
+# latest app code (otherwise the git clone layer is cached and stays stale).
+ADD https://api.github.com/repos/RebornX10/rebornx10.github.io/git/refs/heads/master /tmp/ref.json
 RUN git clone --depth 1 https://github.com/RebornX10/rebornx10.github.io.git . \
     && pip install --no-cache-dir --user -r requirements.txt
 

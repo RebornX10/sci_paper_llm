@@ -57,12 +57,14 @@
     <p class="tag">Build datasets of <strong>open-access</strong> scientific papers from OpenAlex,
        and ask questions about them with a <strong>local LLM</strong> — all on your machine.</p>
     <p class="badges">
+      <a href="https://huggingface.co/spaces/SamDNX/sci_paper_rag"><img src="https://img.shields.io/badge/Hugging%20Face-Live%20Demo-yellow?logo=huggingface&logoColor=white" alt="Live Demo"></a>
       <a href="https://github.com/RebornX10/rebornx10.github.io/actions/workflows/ci.yml"><img src="https://github.com/RebornX10/rebornx10.github.io/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
       <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT">
       <img src="https://img.shields.io/badge/python-3.11-blue.svg" alt="Python 3.11">
     </p>
     <div class="cta">
-      <a class="btn primary" href="https://github.com/RebornX10/rebornx10.github.io">View on GitHub</a>
+      <a class="btn primary" href="#demo">🤗 Try Live Demo</a>
+      <a class="btn ghost" href="https://github.com/RebornX10/rebornx10.github.io">View on GitHub</a>
       <a class="btn ghost" href="https://codespaces.new/RebornX10/rebornx10.github.io">Open in Codespaces</a>
     </div>
   </header>
@@ -88,20 +90,22 @@
     </div>
   </section>
 
-  <section>
-    <h2>Preview</h2>
-    <div class="preview">
-      <label>Research topic</label>
-      <div class="input">perovskite solar cells</div>
-      <div class="row">
-        <div><label>From date</label><div class="input">2023-01-01</div></div>
-        <div><label>To date</label><div class="input">2025-12-31</div></div>
+  <section id="demo">
+    <h2>Try it live 🤗</h2>
+    <p style="color:var(--muted);font-size:14px;margin-top:-6px">
+      Running in a free Hugging Face CPU Space. Building a corpus is quick; answers take
+      ~30–60s (small model on CPU). If it shows “Building”, give it a minute, or
+      <a href="https://samdnx-sci-paper-rag.hf.space" target="_blank" rel="noopener">open it full-screen ↗</a>.
+    </p>
+    <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)">
+      <div style="display:flex;align-items:center;gap:7px;padding:9px 13px;border-bottom:1px solid var(--line)">
+        <span style="width:11px;height:11px;border-radius:50%;background:#ff5f56;display:inline-block"></span>
+        <span style="width:11px;height:11px;border-radius:50%;background:#ffbd2e;display:inline-block"></span>
+        <span style="width:11px;height:11px;border-radius:50%;background:#27c93f;display:inline-block"></span>
+        <span style="margin-left:8px;color:var(--muted);font-size:12px">samdnx-sci-paper-rag.hf.space</span>
       </div>
-      <span class="button">Download topic</span>
-      <div class="bar"><i></i></div>
-      <div class="answer"><strong>Q:</strong> What improves stability?<br>
-        <strong>A:</strong> Weaker solvation and dual-site-binding ligands improve
-        cyclability and stability <em>(Kim et al.; Zhang et al.)</em>.</div>
+      <iframe src="https://samdnx-sci-paper-rag.hf.space" title="sci_paper_llm live demo"
+              loading="lazy" style="width:100%;height:680px;border:0;display:block"></iframe>
     </div>
   </section>
 

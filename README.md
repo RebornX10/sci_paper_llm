@@ -1,10 +1,13 @@
 # 🔬 sci_paper_llm — Local Paper Research Assistant
 
+[![Live Demo](https://img.shields.io/badge/Hugging%20Face-Live%20Demo-yellow?logo=huggingface&logoColor=white)](https://huggingface.co/spaces/SamDNX/sci_paper_rag)
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/RebornX10/rebornx10.github.io)
 [![CI](https://github.com/RebornX10/rebornx10.github.io/actions/workflows/ci.yml/badge.svg)](https://github.com/RebornX10/rebornx10.github.io/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Build a dataset of **open-access** scientific papers and ask questions about them with a **local LLM** (Ollama) — all running on your machine.
+
+**▶️ Live demo:** <https://huggingface.co/spaces/SamDNX/sci_paper_rag> · **🌐 Project page:** <https://rebornx10.github.io/>
 
 Papers come from [OpenAlex](https://openalex.org) (a free, open index of ~250M scholarly works) and are downloaded only from their legal open-access locations. Each paper becomes a row with `authors, title, content, date, country, journal, theme`, and you can query the corpus in natural language through a small web UI.
 

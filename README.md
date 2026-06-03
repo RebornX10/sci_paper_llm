@@ -69,6 +69,18 @@ docker compose up
 
 The app is forwarded on port **8000** — open it from the *Ports* tab.
 
+## Live demo on Hugging Face Spaces
+
+A Docker-based deployment lives in [deploy/huggingface/](deploy/huggingface/). To host a public demo:
+
+1. Create a new **Docker** Space at <https://huggingface.co/new-space> (CPU basic / free).
+2. Add the three files from [deploy/huggingface/](deploy/huggingface/) (`README.md`, `Dockerfile`, `start.sh`) to the Space repo.
+3. The Space builds automatically and serves on port 7860.
+
+It runs Ollama + the app inside the Space. The free CPU tier uses a small model
+(`qwen2.5:0.5b`) and is slow — set the `OLLAMA_MODEL` Space variable to change it,
+or use GPU hardware for real speed.
+
 ## Configuration
 
 All variables live in [config.yaml](config.yaml) and can be overridden with environment variables:

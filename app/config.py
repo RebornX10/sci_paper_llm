@@ -12,6 +12,7 @@ def _as_bool(v):
 
 _ENV_OVERRIDES = {
     "OPENALEX_MAILTO": (("openalex", "mailto"), str),
+    "MAX_PAPERS_CAP": (("openalex", "max_papers_cap"), int),
     "HOST": (("server", "host"), str),
     "PORT": (("server", "port"), int),
     "OPEN_BROWSER": (("server", "open_browser"), _as_bool),

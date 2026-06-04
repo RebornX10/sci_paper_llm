@@ -75,6 +75,21 @@ def test_build_handles_no_results(monkeypatch):
     assert done["error"] is True
 
 
+def test_build_clamps_to_cap(monkeypatch):
+    captured = {}
+
+    def fake_run_build(job_id, topic, date_from, date_to, n):
+        captured["n"] = n
+        server.JOBS[job_id]["done"] = True
+
+    monkeypatch.setattr(server, "run_build", fake_run_build)
+    resp = server.build(rf.post("/build", data=json.dumps({"topic": "x", "n": 999999}),
+                                content_type="application/json"))
+    job_id = json.loads(resp.content)["job_id"]
+    _wait_done(job_id)
+    assert captured["n"] == server.CONFIG["openalex"]["max_papers_cap"]
+
+
 def test_status_unknown_job():
     assert server.status(rf.get("/status?job=nope")).status_code == 400
 

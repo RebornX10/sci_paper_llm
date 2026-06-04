@@ -23,12 +23,14 @@ def test_load_applies_env_override(monkeypatch, tmp_path):
     monkeypatch.setenv("HOST", "0.0.0.0")
     monkeypatch.setenv("OPEN_BROWSER", "false")
     monkeypatch.setenv("OUTPUT_BASENAME", "data/papers")
+    monkeypatch.setenv("MAX_PAPERS_CAP", "500")
     data = config.load(cfg)
     assert data["download"]["workers"] == 4
     assert data["server"]["port"] == 9999
     assert data["server"]["host"] == "0.0.0.0"
     assert data["server"]["open_browser"] is False
     assert data["download"]["output_basename"] == "data/papers"
+    assert data["openalex"]["max_papers_cap"] == 500
 
 
 def test_load_without_env(tmp_path, monkeypatch):

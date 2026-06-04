@@ -71,6 +71,7 @@ def index(request):
     model = pick_model()
     banner = "" if model else "No Ollama model found. Run `ollama pull llama3.2`, then reload."
     page = TEMPLATE.replace("{{MODEL}}", html.escape(model or "none"))
+    page = page.replace("{{MAX_PAPERS}}", str(CONFIG["openalex"]["max_papers_cap"]))
     return HttpResponse(page.replace("{{BANNER}}", html.escape(banner)))
 
 
@@ -81,7 +82,8 @@ def build(request):
     topic = (data.get("topic") or "").strip()
     if not topic:
         return HttpResponseBadRequest("topic is required")
-    n = max(1, min(int(data.get("n", CONFIG["openalex"]["max_papers"])), 200))
+    n = max(1, min(int(data.get("n", CONFIG["openalex"]["max_papers"])),
+                   CONFIG["openalex"]["max_papers_cap"]))
     job_id = uuid.uuid4().hex
     JOBS[job_id] = {"stage": "Starting…", "progress": 0, "done": False, "error": False}
     threading.Thread(

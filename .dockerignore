@@ -8,6 +8,7 @@ __pycache__/
 .devcontainer/
 *.ipynb
 *.md
+wiki/
 LICENSE
 data/
 papers.parquet

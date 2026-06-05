@@ -12,6 +12,13 @@ log = logging.getLogger("openalex")
 
 API = "https://api.openalex.org/works"
 
+# Only the top-level fields parse_work actually reads — shrinks each page payload
+# and speeds JSON decoding (OpenAlex returns ~50 fields per work by default).
+SELECT = ",".join([
+    "id", "doi", "title", "authorships", "publication_date",
+    "primary_location", "locations", "abstract_inverted_index", "primary_topic",
+])
+
 
 def reconstruct_abstract(inv_index: Optional[dict]) -> Optional[str]:
     if not inv_index:
@@ -80,6 +87,7 @@ def fetch_metadata(
 
     params = {
         "filter": ",".join(filters),
+        "select": SELECT,
         "per-page": CONFIG["openalex"]["per_page"],
         "cursor": "*",
         "mailto": CONFIG["openalex"]["mailto"],

@@ -269,7 +269,10 @@ if not settings.configured:
         SECRET_KEY="local-dev-only",
         ALLOWED_HOSTS=["*"],
         ROOT_URLCONF=__name__,
-        MIDDLEWARE=["django.middleware.common.CommonMiddleware"],
+        MIDDLEWARE=[
+            "django.middleware.gzip.GZipMiddleware",  # compress HTML/CSS/JS/JSON
+            "django.middleware.common.CommonMiddleware",
+        ],
     )
 
 urlpatterns = [

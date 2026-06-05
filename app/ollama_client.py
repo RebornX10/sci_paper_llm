@@ -11,11 +11,12 @@ from app.config import CONFIG
 log = logging.getLogger("ollama")
 
 _OLLAMA = CONFIG["ollama"]
+_SESSION = requests.Session()  # reuse keep-alive connections to the Ollama server
 
 
 def list_models() -> list[str]:
     try:
-        r = requests.get(f"{_OLLAMA['url']}/api/tags", timeout=5)
+        r = _SESSION.get(f"{_OLLAMA['url']}/api/tags", timeout=5)
         models = [m["name"] for m in r.json().get("models", [])]
         log.info("Ollama list_models (%s): %s", _OLLAMA["url"], models or "none")
         return models
@@ -42,7 +43,7 @@ def chat(question: str, context: str, model: str) -> str:
     log.info("Ollama chat: model=%s, context=%d chars, question=%r",
              model, len(context), question[:80])
     t0 = time.monotonic()
-    r = requests.post(
+    r = _SESSION.post(
         f"{_OLLAMA['url']}/api/chat",
         json={"model": model, "messages": [{"role": "user", "content": prompt}], "stream": False},
         timeout=_OLLAMA["request_timeout"],

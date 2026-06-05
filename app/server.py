@@ -23,8 +23,8 @@ from app.ollama_client import chat, pick_model
 from app.openalex import fetch_metadata
 from app.retrieval import build_context
 from app.system import (
-    _mem_limit_bytes, _mem_used_bytes, effective_max_papers, log_resources, metrics,
-    papers_for_target, worker_count,
+    _mem_limit_bytes, _mem_used_bytes, download_workers, effective_max_papers, log_resources,
+    metrics, papers_for_target,
 )
 
 log = logging.getLogger("server")
@@ -47,9 +47,9 @@ def run_build(job_id: str, topic: str, date_from: str, date_to: str, n: int) -> 
     baseline = _mem_used_bytes()
     total_ram = _mem_limit_bytes()
     state = {"done": 0, "oom": False}
-    log.info("Build start: topic=%r n=%d | workers=%d | baseline RAM=%.2f GB / %.2f GB | "
+    log.info("Build start: topic=%r n=%d | download workers=%d | baseline RAM=%.2f GB / %.2f GB | "
              "abort if projected peak > %.0f%%",
-             topic, n, worker_count(), baseline / 1e9, total_ram / 1e9, guard * 100)
+             topic, n, download_workers(), baseline / 1e9, total_ram / 1e9, guard * 100)
     try:
         filters = []
         if date_from:
@@ -84,7 +84,7 @@ def run_build(job_id: str, topic: str, date_from: str, date_to: str, n: int) -> 
                 return True
             return False
 
-        download_many(papers, workers=worker_count(), progress=on_progress, stop=stop)
+        download_many(papers, workers=download_workers(), progress=on_progress, stop=stop)
         if state["oom"]:
             raise MemoryError
 

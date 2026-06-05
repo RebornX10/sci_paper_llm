@@ -42,6 +42,36 @@ def test_worker_count_auto_from_threads(monkeypatch):
     assert system.worker_count() == 5
 
 
+def test_download_workers_explicit(monkeypatch):
+    monkeypatch.setitem(system.CONFIG["download"], "workers", 11)
+    assert system.download_workers() == 11
+
+
+def test_download_workers_oversubscribes(monkeypatch):
+    # I/O-bound: workers = cpus * io_multiplier, capped at io_workers_cap
+    monkeypatch.setitem(system.CONFIG["download"], "workers", None)
+    monkeypatch.setitem(system.CONFIG["download"], "io_multiplier", 8)
+    monkeypatch.setitem(system.CONFIG["download"], "io_workers_cap", 32)
+    monkeypatch.setattr(system, "available_cpus", lambda: 2)
+    assert system.download_workers() == 16  # 2 * 8
+
+
+def test_download_workers_capped(monkeypatch):
+    monkeypatch.setitem(system.CONFIG["download"], "workers", None)
+    monkeypatch.setitem(system.CONFIG["download"], "io_multiplier", 8)
+    monkeypatch.setitem(system.CONFIG["download"], "io_workers_cap", 32)
+    monkeypatch.setattr(system, "available_cpus", lambda: 16)  # 128 -> capped
+    assert system.download_workers() == 32
+
+
+def test_download_workers_floor(monkeypatch):
+    monkeypatch.setitem(system.CONFIG["download"], "workers", None)
+    monkeypatch.setitem(system.CONFIG["download"], "io_multiplier", 8)
+    monkeypatch.setitem(system.CONFIG["download"], "io_workers_cap", 32)
+    monkeypatch.setattr(system, "available_cpus", lambda: 1)  # 8 floor
+    assert system.download_workers() == 8
+
+
 def test_log_resources_runs():
     system.log_resources()  # must not raise
 

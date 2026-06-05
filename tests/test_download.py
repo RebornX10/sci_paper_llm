@@ -29,7 +29,7 @@ def test_fetch_pdf_bytes_byte_cap(monkeypatch):
                         lambda *a, **k: FakeResponse(content=big,
                                                      headers={"Content-Type": "application/pdf"}))
     data = download._fetch_pdf_bytes("u", time.monotonic() + 10)
-    assert len(data) <= 1000 + 64 * 1024
+    assert len(data) <= 1000 + download._CHUNK
 
 
 def test_fetch_pdf_bytes_deadline(monkeypatch):
@@ -39,7 +39,7 @@ def test_fetch_pdf_bytes_deadline(monkeypatch):
                                                      headers={"Content-Type": "application/pdf"}))
     out = download._fetch_pdf_bytes("u", time.monotonic() - 1)  # already past deadline
     assert out[:4] == b"%PDF"
-    assert len(out) <= 64 * 1024
+    assert len(out) <= download._CHUNK
 
 
 def test_download_fulltext_success(monkeypatch, pdf_bytes, paper):

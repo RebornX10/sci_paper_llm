@@ -11,11 +11,12 @@ import fitz
 from app.config import CONFIG
 from app.http import BROWSER_UA, SESSION
 from app.models import Paper
-from app.system import worker_count
+from app.system import download_workers
 
 log = logging.getLogger("download")
 
 _DL = CONFIG["download"]
+_CHUNK = 256 * 1024  # stream read size; larger = less per-PDF Python loop overhead
 
 
 def _fetch_pdf_bytes(url: str, deadline: float) -> Optional[bytes]:
@@ -28,7 +29,7 @@ def _fetch_pdf_bytes(url: str, deadline: float) -> Optional[bytes]:
     r.raise_for_status()
     ctype = r.headers.get("Content-Type", "").lower()
     buf, total = bytearray(), 0
-    for chunk in r.iter_content(64 * 1024):
+    for chunk in r.iter_content(_CHUNK):
         buf += chunk
         total += len(chunk)
         if total == len(chunk) and "pdf" not in ctype and buf[:4] != b"%PDF":
@@ -80,7 +81,8 @@ def download_many(
     if total == 0:
         return papers
     if workers is None:
-        workers = worker_count()
+        workers = download_workers()
+    workers = max(1, min(workers, total))
     log.info("Downloading %d papers with %d parallel workers", total, workers)
     done = 0
     ex = ThreadPoolExecutor(max_workers=workers)

@@ -113,4 +113,4 @@ def fetch_metadata(
         if not cursor:
             return
         params["cursor"] = cursor
-        time.sleep(0.2)
+        time.sleep(0.1)  # polite-pool allows ~10 req/s; keep pagination snappy for large N

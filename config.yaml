@@ -10,19 +10,24 @@ openalex:
   default_search: null
   default_filters: "from_publication_date:2022-01-01"
   max_papers: 25
-  max_papers_cap: 200000   # hard ceiling; the RAM-based cap is usually the real limit
+  max_papers_cap: 1000000  # hard ceiling; the RAM-based cap + runtime guard are the real limits
 
 download:
-  workers: null            # null = auto: thread_fraction of available CPU threads
-  thread_fraction: 0.8     # share of available CPU threads to allocate as workers
-  paper_deadline_s: 30     # per-paper time budget (lower = faster, drops slow stragglers)
+  # Downloads are I/O-bound (most time is spent waiting on the network), so we
+  # oversubscribe CPU threads: workers = available CPU threads x io_multiplier,
+  # capped at io_workers_cap. Benchmarked ~6x faster than 1-worker-per-CPU.
+  workers: null            # null = auto (I/O oversubscription below); set an int to force
+  io_multiplier: 8         # download workers per available CPU thread (I/O-bound)
+  io_workers_cap: 32       # ceiling on concurrent downloads (politeness + diminishing returns)
+  thread_fraction: 0.8     # share of CPU threads for CPU-bound work (PDF parse sizing)
+  paper_deadline_s: 15     # per-paper time budget (lower = faster, drops slow stragglers)
   max_pdf_bytes: 80000000  # max PDF size read into memory (the per-download cache)
   connect_timeout: 5
-  read_timeout: 40
+  read_timeout: 20
   max_chars: 2000000       # full text kept per paper in memory (the per-paper cache)
   output_basename: papers
   ram_fraction: 0.85       # fraction of available RAM the corpus may use (peak)
-  ram_per_paper_mb: 0.1    # est. peak memory per paper (runtime guard is the real safety net)
+  ram_per_paper_mb: 0.06   # est. peak memory per paper (runtime guard is the real safety net)
   ram_guard_pct: 85        # abort a build if projected peak RAM would exceed this
   ram_target_pct: 80       # suggested cap aims to keep peak RAM at/below this
 

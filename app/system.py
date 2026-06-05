@@ -81,12 +81,27 @@ def available_cpus() -> int:
 
 
 def worker_count() -> int:
-    """Download/parse workers: explicit config/env value, else ~thread_fraction of CPUs."""
+    """CPU-bound worker sizing: explicit config/env value, else ~thread_fraction of CPUs."""
     cfg = CONFIG["download"].get("workers")
     if cfg:
         return int(cfg)
     frac = CONFIG["download"].get("thread_fraction", 0.8)
     return max(1, round(available_cpus() * frac))
+
+
+def download_workers() -> int:
+    """Concurrency for PDF downloads. Downloads are I/O-bound (most time is spent
+    waiting on the network), so we oversubscribe the CPU threads: workers =
+    available CPU threads x io_multiplier, capped at io_workers_cap with a floor
+    of 8 so even a 1-vCPU host parallelises. An explicit config/env 'workers'
+    value still overrides."""
+    dl = CONFIG["download"]
+    cfg = dl.get("workers")
+    if cfg:
+        return int(cfg)
+    mult = dl.get("io_multiplier", 8)
+    cap = int(dl.get("io_workers_cap", 32))
+    return max(8, min(cap, round(available_cpus() * mult)))
 
 
 def log_resources() -> None:
@@ -95,10 +110,16 @@ def log_resources() -> None:
     cpus = available_cpus()
     cfg_w = dl.get("workers")
     if cfg_w:
-        log.info("Threads: %d CPU threads available; workers=%d (explicit override)", cpus, int(cfg_w))
+        log.info("Threads: %d CPU threads available; download workers=%d (explicit override)",
+                 cpus, int(cfg_w))
     else:
+        mult = dl.get("io_multiplier", 8)
+        cap = int(dl.get("io_workers_cap", 32))
         frac = dl.get("thread_fraction", 0.8)
-        log.info("Threads: %d CPU threads x %.0f%% -> %d workers", cpus, frac * 100, worker_count())
+        log.info("Threads: %d CPU threads; downloads are I/O-bound -> %dx oversubscribe = %d, "
+                 "capped at %d -> %d download workers",
+                 cpus, mult, round(cpus * mult), cap, download_workers())
+        log.info("CPU-bound workers: %d threads x %.0f%% -> %d", cpus, frac * 100, worker_count())
 
     total, used = _mem_limit_bytes(), _mem_used_bytes()
     log.info("RAM: total=%.2f GB, used=%.2f GB (%.1f%%)",

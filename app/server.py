@@ -17,13 +17,14 @@ from django.conf import settings
 from django.core.wsgi import get_wsgi_application
 from django.http import (
     HttpResponse, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse,
+    StreamingHttpResponse,
 )
 from django.urls import path
 
 from app.config import CONFIG
 from app.corpus import save_corpus
 from app.download import download_many
-from app.ollama_client import chat, pick_model
+from app.ollama_client import chat, chat_stream, pick_model
 from app.openalex import fetch_metadata
 from app.retrieval import build_context
 from app.system import (
@@ -187,6 +188,43 @@ def ask(request):
     return JsonResponse({"answer": answer, "sources": sources, "model": model})
 
 
+def _sse(obj) -> str:
+    return f"data: {json.dumps(obj)}\n\n"
+
+
+def ask_stream(request):
+    """Server-Sent-Events variant of /ask: streams the answer token-by-token.
+    Validation failures return a normal JSON error; the happy path streams."""
+    if request.method != "POST":
+        return HttpResponseBadRequest("POST only")
+    df = CORPUS.get("df")
+    if df is None or len(df) == 0:
+        return JsonResponse({"error": "Download a topic first."}, status=400)
+    model = pick_model()
+    if not model:
+        return JsonResponse({"error": "No Ollama model installed."}, status=400)
+    question = (json.loads(request.body or "{}").get("question") or "").strip()
+    if not question:
+        return HttpResponseBadRequest("question is required")
+    context, sources = build_context(df, question)
+
+    def gen():
+        yield _sse({"sources": sources, "model": model})
+        try:
+            for tok in chat_stream(question, context, model):
+                yield _sse({"delta": tok})
+            yield _sse({"done": True})
+        except Exception as e:
+            log.warning("ask_stream failed: %s", e)
+            yield _sse({"error": f"Ollama error: {e}"})
+
+    resp = StreamingHttpResponse(gen(), content_type="text/event-stream")
+    resp["Cache-Control"] = "no-cache"
+    resp["X-Accel-Buffering"] = "no"          # don't let a proxy buffer the stream
+    resp["Content-Encoding"] = "identity"     # skip GZipMiddleware (it would buffer)
+    return resp
+
+
 _QUESTION_TEMPLATES = [
     "What are the main findings?",
     "Summarize the key results.",
@@ -280,6 +318,7 @@ urlpatterns = [
     path("build", build),
     path("status", status),
     path("ask", ask),
+    path("ask_stream", ask_stream),
     path("suggest", suggest),
     path("metrics", metrics_view),
     path("static/styles.css", app_css),

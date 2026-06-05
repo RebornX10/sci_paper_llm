@@ -234,6 +234,44 @@ def test_ask_success(monkeypatch):
     assert data["sources"][0]["title"] == "Graphene"
 
 
+def test_ask_stream_streams_tokens(monkeypatch):
+    server.CORPUS["df"] = pd.DataFrame([
+        {"title": "Graphene", "abstract": "graphene", "content": "graphene text",
+         "authors": ["A"], "journal": "J", "date": "2023"}])
+    monkeypatch.setattr(server, "pick_model", lambda: "llama3.2")
+    monkeypatch.setattr(server, "chat_stream", lambda q, c, m: iter(["Hello ", "world"]))
+    resp = server.ask_stream(rf.post("/ask_stream", data=json.dumps({"question": "what is graphene"}),
+                                     content_type="application/json"))
+    assert resp["Content-Type"] == "text/event-stream"
+    body = b"".join(resp.streaming_content).decode()
+    assert '"sources"' in body
+    assert '"delta": "Hello "' in body and '"delta": "world"' in body
+    assert '"done": true' in body
+
+
+def test_ask_stream_without_corpus():
+    server.CORPUS.clear()
+    resp = server.ask_stream(rf.post("/ask_stream", data=json.dumps({"question": "q"}),
+                                     content_type="application/json"))
+    assert resp.status_code == 400
+
+
+def test_ask_stream_surfaces_model_error(monkeypatch):
+    server.CORPUS["df"] = pd.DataFrame([
+        {"title": "T", "abstract": "a", "content": "c", "authors": ["A"], "journal": "J", "date": "2023"}])
+    monkeypatch.setattr(server, "pick_model", lambda: "m")
+
+    def boom(*a, **k):
+        raise RuntimeError("ollama down")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(server, "chat_stream", boom)
+    resp = server.ask_stream(rf.post("/ask_stream", data=json.dumps({"question": "q"}),
+                                     content_type="application/json"))
+    body = b"".join(resp.streaming_content).decode()
+    assert '"error"' in body and "ollama down" in body
+
+
 def test_ask_handles_ollama_error(monkeypatch):
     server.CORPUS["df"] = pd.DataFrame([{"title": "t", "abstract": "a", "content": "c",
                                          "authors": ["A"], "journal": "J", "date": "2023"}])

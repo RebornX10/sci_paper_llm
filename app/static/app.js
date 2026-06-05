@@ -127,9 +127,51 @@ const esc = s => String(s).replace(/[&<>"]/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let _sources = [], _sugg = [], _ghost = '';
 
-// Render the answer: HTML-escape it, then turn [n] markers into hoverable citations.
+// Minimal, safe Markdown -> HTML (input is escaped first, so no raw HTML passes).
+function mdToHtml(src){
+  const inline = t => t
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+  const lines = esc(src || '').split('\n');
+  let html = '', inUl = false, inOl = false, inCode = false, code = '';
+  const closeLists = () => { if (inUl) { html += '</ul>'; inUl = false; }
+                             if (inOl) { html += '</ol>'; inOl = false; } };
+  for (const ln of lines){
+    if (/^\s*```/.test(ln)){
+      if (!inCode) { closeLists(); inCode = true; code = ''; }
+      else { html += '<pre><code>' + code + '</code></pre>'; inCode = false; }
+      continue;
+    }
+    if (inCode){ code += ln + '\n'; continue; }
+    let m;
+    if ((m = ln.match(/^(#{1,6})\s+(.*)$/))){
+      closeLists();
+      const lvl = Math.min(6, Math.max(2, m[1].length + 1));
+      html += `<h${lvl}>` + inline(m[2]) + `</h${lvl}>`;
+    } else if ((m = ln.match(/^\s*[-*]\s+(.*)$/))){
+      if (inOl) { html += '</ol>'; inOl = false; }
+      if (!inUl) { html += '<ul>'; inUl = true; }
+      html += '<li>' + inline(m[1]) + '</li>';
+    } else if ((m = ln.match(/^\s*\d+\.\s+(.*)$/))){
+      if (inUl) { html += '</ul>'; inUl = false; }
+      if (!inOl) { html += '<ol>'; inOl = true; }
+      html += '<li>' + inline(m[1]) + '</li>';
+    } else if (!ln.trim()){
+      closeLists();
+    } else {
+      closeLists();
+      html += '<p>' + inline(ln) + '</p>';
+    }
+  }
+  closeLists();
+  if (inCode) html += '<pre><code>' + code + '</code></pre>';
+  return html;
+}
+
+// Render the answer as Markdown, then turn [n] markers into hoverable citations.
 function renderAnswer(text){
-  $('answer').innerHTML = esc(text || '').replace(/\[(\d+)\]/g, (m, n) => {
+  $('answer').innerHTML = mdToHtml(text).replace(/\[(\d+)\]/g, (m, n) => {
     const i = +n - 1;
     return _sources[i] ? `<sup class="cite" data-i="${i}">[${n}]</sup>` : m;
   });
@@ -167,22 +209,60 @@ function stopAskClock(ok){
   }
 }
 
+let _streaming = false;
+function beginStream(){            // first token arrived: stop the ETA, show live state
+  _streaming = true;
+  if (_askTimer) { clearInterval(_askTimer); _askTimer = null; }
+  $('abar').style.width = '94%';
+  $('astage').textContent = 'Streaming answer…';
+}
+
 $('ask').onclick = async () => {
   const question = $('q').value.trim();
   if (!question) return;
   _ghost = ''; $('ghost').innerHTML = '';
-  $('ask').disabled = true; $('answer').style.display = 'none'; $('sources').textContent = '';
-  $('abarwrap').style.display = 'block'; $('abar').style.opacity = '.8';
+  _streaming = false; _sources = [];
+  $('ask').disabled = true; $('answer').style.display = 'none'; $('answer').textContent = '';
+  $('sources').textContent = ''; $('abarwrap').style.display = 'block'; $('abar').style.opacity = '.8';
   startAskClock();
-  const res = await post('/ask', { question }).catch(() => ({ error: 'Network error.' }));
-  stopAskClock(!res.error);
+
+  let answer = '', error = null;
+  try {
+    const resp = await fetch('/ask_stream', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question }) });
+    const ctype = resp.headers.get('Content-Type') || '';
+    if (!resp.ok || !resp.body || !ctype.includes('event-stream')) {
+      const j = await resp.json().catch(() => ({ error: 'Request failed.' }));
+      error = j.error || 'Request failed.';
+    } else {
+      $('answer').style.display = 'block';
+      const reader = resp.body.getReader(), dec = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = buf.indexOf('\n\n')) >= 0) {
+          const line = buf.slice(0, i).split('\n').find(l => l.startsWith('data:'));
+          buf = buf.slice(i + 2);
+          if (!line) continue;
+          let evt; try { evt = JSON.parse(line.slice(5).trim()); } catch (e) { continue; }
+          if (evt.sources) { _sources = evt.sources || []; }
+          else if (evt.delta != null) { if (!_streaming) beginStream(); answer += evt.delta; $('answer').textContent = answer; }
+          else if (evt.error) { error = evt.error; }
+        }
+      }
+    }
+  } catch (e) { error = 'Network error.'; }
+
+  stopAskClock(!error);
   $('abarwrap').style.display = 'none';
   $('ask').disabled = false;
-  if (res.error) { $('astage').textContent = res.error; return; }
+  if (error) { $('astage').textContent = error; return; }
   $('astage').textContent = 'Answered in ' + fmt((Date.now() - _askT0) / 1000) + '.';
-  _sources = res.sources || [];
   $('answer').style.display = 'block';
-  renderAnswer(res.answer);
+  renderAnswer(answer);             // re-render the finished text as Markdown + citations
   $('sources').innerHTML = _sources.length
     ? 'Sources: ' + _sources.map((s, i) =>
         `<span class="src-chip" data-i="${i}">“${esc(s.title || 'Untitled')}”</span>`).join('  ·  ')

@@ -141,6 +141,21 @@ def test_build_handles_oom(monkeypatch):
     assert done.get("suggested_n", 0) >= 1
 
 
+def test_suggest_returns_templates():
+    data = json.loads(server.suggest(rf.get("/suggest")).content)
+    assert isinstance(data["suggestions"], list) and len(data["suggestions"]) >= 5
+    assert any("main findings" in s for s in data["suggestions"])
+
+
+def test_suggest_is_topic_and_corpus_aware():
+    server.CORPUS["topic"] = "malaria"
+    server.CORPUS["df"] = pd.DataFrame([{"title": "t", "theme": "Vector control"}])
+    data = json.loads(server.suggest(rf.get("/suggest")).content)
+    joined = " ".join(data["suggestions"])
+    assert "malaria" in joined
+    assert "Vector control" in joined
+
+
 def test_status_unknown_job():
     assert server.status(rf.get("/status?job=nope")).status_code == 400
 

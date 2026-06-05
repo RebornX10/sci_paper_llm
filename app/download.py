@@ -18,6 +18,39 @@ log = logging.getLogger("download")
 _DL = CONFIG["download"]
 _CHUNK = 256 * 1024  # stream read size; larger = less per-PDF Python loop overhead
 
+# Malformed PDFs make MuPDF spew "syntax error / object is not a stream" lines to
+# the C stderr; silence them so they don't flood the logs (we handle failures in
+# Python instead). Guarded for PyMuPDF versions without TOOLS.
+try:
+    fitz.TOOLS.mupdf_display_errors(False)
+except Exception:
+    pass
+
+
+def _extract_text(data: bytes, max_chars: int, deadline: float) -> str:
+    """Extract text page-by-page, tolerant of corrupt PDFs. A single bad page is
+    skipped rather than aborting the whole document, parsing stops once we have
+    enough text, and the per-paper `deadline` bounds total parse time so a
+    pathological PDF can't hang a worker (which previously froze whole builds)."""
+    parts, total = [], 0
+    try:
+        with fitz.open(stream=io.BytesIO(data), filetype="pdf") as doc:
+            for page in doc:
+                if time.monotonic() > deadline:
+                    break
+                try:
+                    t = str(page.get_text())
+                except Exception:
+                    continue  # skip the corrupt page, keep the rest of the document
+                if t:
+                    parts.append(t)
+                    total += len(t)
+                    if total >= max_chars:
+                        break  # we already have enough; don't parse the whole doc
+    except Exception as e:
+        log.warning("PDF parse error (skipping): %s", e)
+    return "".join(parts)[:max_chars].strip()
+
 
 def _fetch_pdf_bytes(url: str, deadline: float) -> Optional[bytes]:
     r = SESSION.get(
@@ -57,9 +90,7 @@ def download_fulltext(
             data = _fetch_pdf_bytes(url, deadline)
             if not data:
                 continue
-            with fitz.open(stream=io.BytesIO(data), filetype="pdf") as doc:
-                text = "\n".join(str(page.get_text()) for page in doc)
-            text = text[:max_chars].strip()
+            text = _extract_text(data, max_chars, deadline)
             if text:
                 paper.content = text
                 paper.pdf_url = url

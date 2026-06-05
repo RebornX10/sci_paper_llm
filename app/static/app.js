@@ -121,9 +121,22 @@ function poll(job) {
 }
 
 // --- ask ---
+const esc = s => String(s).replace(/[&<>"]/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let _sources = [];
+
+// Render the answer: HTML-escape it, then turn [n] markers into hoverable citations.
+function renderAnswer(text){
+  $('answer').innerHTML = esc(text || '').replace(/\[(\d+)\]/g, (m, n) => {
+    const i = +n - 1;
+    return _sources[i] ? `<sup class="cite" data-i="${i}">[${n}]</sup>` : m;
+  });
+}
+
 $('ask').onclick = async () => {
   const question = $('q').value.trim();
   if (!question) return;
+  $('ac').classList.remove('open');
   $('ask').disabled = true; $('answer').style.display = 'none'; $('sources').textContent = '';
   $('abarwrap').style.display = 'block'; $('abar').style.width = '100%';
   $('abar').style.transition = 'none'; $('abar').style.opacity = '.6';
@@ -132,12 +145,74 @@ $('ask').onclick = async () => {
   $('abarwrap').style.display = 'none'; $('astage').textContent = '';
   $('ask').disabled = false;
   if (res.error) { $('astage').textContent = res.error; return; }
-  $('answer').style.display = 'block'; $('answer').textContent = res.answer;
-  if (res.sources && res.sources.length)
-    $('sources').textContent = 'Sources: ' +
-      res.sources.map(s => '“' + s.title + '”').join('  ·  ');
+  _sources = res.sources || [];
+  $('answer').style.display = 'block';
+  renderAnswer(res.answer);
+  $('sources').innerHTML = _sources.length
+    ? 'Sources: ' + _sources.map((s, i) =>
+        `<span class="src-chip" data-i="${i}">“${esc(s.title || 'Untitled')}”</span>`).join('  ·  ')
+    : '';
 };
-$('q').addEventListener('keydown', e => { if (e.key === 'Enter') $('ask').click(); });
+
+// --- hover tooltip for inline citations + source chips ---
+const _tip = document.createElement('div');
+_tip.className = 'tip'; document.body.appendChild(_tip);
+function showTip(i, x, y){
+  const s = _sources[i];
+  if (!s) { hideTip(); return; }
+  _tip.innerHTML = `<b>${esc(s.title || 'Untitled')}</b>`
+    + (s.authors && s.authors.length ? `<div class="a">${esc(s.authors.slice(0,4).join(', '))}</div>` : '')
+    + (s.journal || s.date ? `<div class="j">${esc([s.journal, s.date].filter(Boolean).join(' · '))}</div>` : '')
+    + (s.snippet ? `<div class="s">${esc(s.snippet)}…</div>` : '');
+  _tip.style.display = 'block';
+  const w = _tip.offsetWidth, h = _tip.offsetHeight, pad = 14;
+  let L = x + pad, T = y + pad;
+  if (L + w > innerWidth - 8) L = x - w - pad;
+  if (T + h > innerHeight - 8) T = y - h - pad;
+  _tip.style.left = Math.max(8, L) + 'px';
+  _tip.style.top = Math.max(8, T) + 'px';
+}
+function hideTip(){ _tip.style.display = 'none'; }
+['mouseover', 'mousemove'].forEach(ev =>
+  $('qa').addEventListener(ev, e => {
+    const el = e.target.closest('.cite,.src-chip');
+    if (el) showTip(+el.dataset.i, e.clientX, e.clientY);
+  }));
+$('qa').addEventListener('mouseout', e => { if (e.target.closest('.cite,.src-chip')) hideTip(); });
+
+// --- autocomplete for the question bar ---
+let _sugg = [], _acItems = [], _acIdx = -1;
+async function loadSugg(){
+  try { _sugg = (await (await fetch('/suggest')).json()).suggestions || []; }
+  catch (e) { _sugg = []; }
+}
+function renderAC(){
+  const v = $('q').value.trim().toLowerCase();
+  _acItems = _sugg.filter(s => !v || s.toLowerCase().includes(v)).slice(0, 8);
+  _acIdx = -1;
+  if (!_acItems.length) { $('ac').classList.remove('open'); $('ac').innerHTML = ''; return; }
+  $('ac').innerHTML = _acItems.map((s, i) =>
+    `<div class="ac-item" data-i="${i}">${esc(s)}</div>`).join('');
+  $('ac').classList.add('open');
+  [...$('ac').children].forEach(el => {
+    el.onmousedown = ev => { ev.preventDefault(); $('q').value = _acItems[+el.dataset.i];
+      $('ac').classList.remove('open'); $('q').focus(); };
+  });
+}
+function acHighlight(){ [...$('ac').children].forEach((el, i) => el.classList.toggle('active', i === _acIdx)); }
+$('q').addEventListener('focus', async () => { if (!_sugg.length) await loadSugg(); renderAC(); });
+$('q').addEventListener('input', renderAC);
+$('q').addEventListener('blur', () => setTimeout(() => $('ac').classList.remove('open'), 130));
+$('q').addEventListener('keydown', e => {
+  const open = $('ac').classList.contains('open');
+  if (open && e.key === 'ArrowDown') { e.preventDefault(); _acIdx = Math.min(_acIdx + 1, _acItems.length - 1); acHighlight(); }
+  else if (open && e.key === 'ArrowUp') { e.preventDefault(); _acIdx = Math.max(_acIdx - 1, 0); acHighlight(); }
+  else if (e.key === 'Enter') {
+    if (open && _acIdx >= 0) { e.preventDefault(); $('q').value = _acItems[_acIdx]; $('ac').classList.remove('open'); }
+    else { $('ac').classList.remove('open'); $('ask').click(); }
+  }
+  else if (e.key === 'Escape') { $('ac').classList.remove('open'); }
+});
 
 // --- live system metrics ---
 const cpuD = [], ramD = [], netD = [], MAXP = 60;

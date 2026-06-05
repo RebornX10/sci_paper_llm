@@ -32,9 +32,11 @@ def build_context(df: pd.DataFrame, question: str, k: int = None, budget: int = 
     parts, sources, used = [], [], 0
     for row in ranked:
         body = _text(row.get("content")) or _text(row.get("abstract"))
+        authors = _authors(row.get("authors"))
+        idx = len(parts) + 1
         block = (
-            f"Title: {_text(row.get('title'))}\n"
-            f"Authors: {', '.join(_authors(row.get('authors'))[:6])}\n"
+            f"[{idx}] Title: {_text(row.get('title'))}\n"
+            f"Authors: {', '.join(authors[:6])}\n"
             f"Journal: {_text(row.get('journal'))} ({_text(row.get('date'))})\n"
             f"Excerpt: {body[: budget // k]}\n---"
         )
@@ -43,6 +45,8 @@ def build_context(df: pd.DataFrame, question: str, k: int = None, budget: int = 
         parts.append(block)
         used += len(block)
         sources.append({"title": _text(row.get("title")) or None,
+                        "authors": authors[:6],
                         "journal": _text(row.get("journal")) or None,
-                        "date": _text(row.get("date")) or None})
+                        "date": _text(row.get("date")) or None,
+                        "snippet": (body[:240].strip() or None)})
     return "\n".join(parts), sources

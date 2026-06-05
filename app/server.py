@@ -182,6 +182,40 @@ def ask(request):
     return JsonResponse({"answer": answer, "sources": sources, "model": model})
 
 
+_QUESTION_TEMPLATES = [
+    "What are the main findings?",
+    "Summarize the key results.",
+    "What methods were used?",
+    "What are the limitations of these studies?",
+    "What future work is suggested?",
+    "What datasets or samples were used?",
+    "How do the papers compare or disagree?",
+    "What are the practical applications?",
+]
+
+
+def suggest(request):
+    """Auto-complete suggestions for the question bar: generic templates plus
+    topic- and corpus-aware questions seeded from the current download."""
+    out = list(_QUESTION_TEMPLATES)
+    topic = (CORPUS.get("topic") or "").strip()
+    if topic:
+        out += [f"What is the current consensus on {topic}?",
+                f"What are the main challenges in {topic}?",
+                f"What are the recent advances in {topic}?"]
+    df = CORPUS.get("df")
+    if df is not None and "theme" in getattr(df, "columns", []):
+        themes = [t for t in df["theme"].dropna().unique().tolist()
+                  if isinstance(t, str) and t][:6]
+        out += [f"What do the papers say about {t}?" for t in themes]
+    seen, deduped = set(), []
+    for s in out:
+        if s not in seen:
+            seen.add(s)
+            deduped.append(s)
+    return JsonResponse({"suggestions": deduped})
+
+
 def metrics_view(request):
     m = metrics()
     m["ram_used_gb"] = round(m["ram_used_mb"] / 1024, 2)
@@ -215,6 +249,7 @@ urlpatterns = [
     path("build", build),
     path("status", status),
     path("ask", ask),
+    path("suggest", suggest),
     path("metrics", metrics_view),
     path("static/styles.css", app_css),
     path("static/app.js", app_js),

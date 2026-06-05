@@ -42,6 +42,22 @@ def test_fetch_pdf_bytes_deadline(monkeypatch):
     assert len(out) <= download._CHUNK
 
 
+def test_extract_text_reads_valid_pdf(pdf_bytes):
+    text = download._extract_text(pdf_bytes, max_chars=10000, deadline=time.monotonic() + 5)
+    assert "test PDF" in text
+
+
+def test_extract_text_handles_corrupt_pdf_without_raising():
+    # garbage that is not a real PDF must not raise and must return ""
+    assert download._extract_text(b"%PDF-not-really" + b"\x00\xff" * 100,
+                                  max_chars=10000, deadline=time.monotonic() + 5) == ""
+
+
+def test_extract_text_respects_deadline(pdf_bytes):
+    # already past the deadline -> no pages processed -> empty
+    assert download._extract_text(pdf_bytes, max_chars=10000, deadline=time.monotonic() - 1) == ""
+
+
 def test_download_fulltext_success(monkeypatch, pdf_bytes, paper):
     monkeypatch.setattr(SESSION, "get", lambda *a, **k: _pdf_response(pdf_bytes))
     download.download_fulltext(paper)

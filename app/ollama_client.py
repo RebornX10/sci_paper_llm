@@ -34,8 +34,9 @@ def pick_model() -> Optional[str]:
 def chat(question: str, context: str, model: str) -> str:
     prompt = (
         "You are a research assistant. Answer the user's question using ONLY the "
-        "paper excerpts below. Cite the paper titles you used. If the excerpts do "
-        "not contain the answer, say so plainly.\n\n"
+        "paper excerpts below. Each excerpt is prefixed with a number like [1]. "
+        "When you use a fact from an excerpt, cite it inline with its number, e.g. "
+        "[1] or [2]. If the excerpts do not contain the answer, say so plainly.\n\n"
         f"=== PAPER EXCERPTS ===\n{context}\n\n=== QUESTION ===\n{question}"
     )
     log.info("Ollama chat: model=%s, context=%d chars, question=%r",

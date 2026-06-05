@@ -17,6 +17,21 @@ def test_build_context_ranks_relevant_first():
     assert sources[0]["title"] == "Graphene electronics"
 
 
+def test_build_context_ranks_on_full_content():
+    # the matching term lives ONLY in `content` (not title/abstract) -> BM25 over
+    # full text must still surface it first. (3 docs so the term's IDF is > 0.)
+    df = pd.DataFrame([
+        {"title": "Paper A", "abstract": "unrelated", "content": "nothing relevant here " * 20,
+         "authors": ["A"], "journal": "J", "date": "2023"},
+        {"title": "Paper B", "abstract": "unrelated", "content": "mitochondria " * 40,
+         "authors": ["B"], "journal": "K", "date": "2022"},
+        {"title": "Paper C", "abstract": "unrelated", "content": "completely different topic " * 20,
+         "authors": ["C"], "journal": "L", "date": "2021"},
+    ])
+    ctx, sources = retrieval.build_context(df, "mitochondria")
+    assert sources[0]["title"] == "Paper B"
+
+
 def test_build_context_returns_sources_metadata():
     ctx, sources = retrieval.build_context(_df(), "graphene")
     assert sources[0]["journal"] == "J"

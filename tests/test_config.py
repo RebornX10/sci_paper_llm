@@ -24,7 +24,11 @@ def test_load_applies_env_override(monkeypatch, tmp_path):
     monkeypatch.setenv("OPEN_BROWSER", "false")
     monkeypatch.setenv("OUTPUT_BASENAME", "data/papers")
     monkeypatch.setenv("MAX_PAPERS_CAP", "500")
+    monkeypatch.setenv("RAM_FRACTION", "0.7")
+    monkeypatch.setenv("RAM_PER_PAPER_MB", "2")
     data = config.load(cfg)
+    assert data["download"]["ram_fraction"] == 0.7
+    assert data["download"]["ram_per_paper_mb"] == 2
     assert data["download"]["workers"] == 4
     assert data["server"]["port"] == 9999
     assert data["server"]["host"] == "0.0.0.0"

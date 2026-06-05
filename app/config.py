@@ -18,6 +18,8 @@ _ENV_OVERRIDES = {
     "OPEN_BROWSER": (("server", "open_browser"), _as_bool),
     "WORKERS": (("download", "workers"), int),
     "OUTPUT_BASENAME": (("download", "output_basename"), str),
+    "RAM_FRACTION": (("download", "ram_fraction"), float),
+    "RAM_PER_PAPER_MB": (("download", "ram_per_paper_mb"), float),
     "OLLAMA_URL": (("ollama", "url"), str),
     "OLLAMA_MODEL": (("ollama", "model"), str),
 }

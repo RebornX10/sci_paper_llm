@@ -54,3 +54,21 @@ def test_save_corpus_creates_missing_parent(tmp_path):
     base = str(tmp_path / "data" / "papers")
     corpus.save_corpus(df, base)
     assert (tmp_path / "data" / "papers.parquet").exists()
+
+
+def test_corpus_cache_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setitem(corpus.CONFIG["download"], "output_basename", str(tmp_path / "papers"))
+    df = pd.DataFrame([{"title": "T", "content": "c"}])
+    key = corpus.cache_key("malaria", "", "", 25)
+    assert corpus.load_from_cache(key) is None        # miss before save
+    corpus.save_to_cache(key, df, "malaria")
+    back = corpus.load_from_cache(key)                  # hit after save
+    assert back is not None and len(back) == 1
+    last_df, last_topic = corpus.load_last()
+    assert last_topic == "malaria" and len(last_df) == 1
+
+
+def test_cache_key_is_request_specific():
+    a = corpus.cache_key("malaria", "", "", 25)
+    assert a == corpus.cache_key("Malaria", "", "", 25)   # case-insensitive topic
+    assert a != corpus.cache_key("malaria", "", "", 50)   # n matters

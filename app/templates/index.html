@@ -36,7 +36,10 @@
           <div><label>To date</label><input id="to" type="date"></div>
           <div><label>Max papers</label><input id="n" type="number" value="25" min="1" max="{{MAX_PAPERS}}"></div>
         </div>
-        <button id="go">Download topic</button>
+        <div class="btnrow">
+          <button id="go">Download topic</button>
+          <button id="cancel" class="secondary" style="display:none">Cancel</button>
+        </div>
         <div class="bar"><i id="bar"></i></div>
         <div class="stage" id="stage"></div>
         <div class="fun" id="fun">

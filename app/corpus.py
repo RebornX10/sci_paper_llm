@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import glob
+import hashlib
+import json
 import logging
 import os
+import time
 from dataclasses import asdict
 from typing import Optional
 
@@ -55,3 +59,50 @@ def save_corpus(df: pd.DataFrame, out: Optional[str] = None) -> None:
         os.makedirs(parent, exist_ok=True)
     df.to_parquet(f"{out}.parquet")
     df.to_csv(f"{out}.csv", index=False)
+
+
+# --- corpus cache: skip OpenAlex + re-download when the same request repeats ---
+
+def _cache_dir() -> str:
+    base = CONFIG["download"]["output_basename"]
+    d = os.path.join(os.path.dirname(base) or ".", "corpora_cache")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def cache_key(topic: str, date_from: str, date_to: str, n: int) -> str:
+    raw = f"{(topic or '').strip().lower()}|{date_from}|{date_to}|{n}"
+    return hashlib.sha1(raw.encode()).hexdigest()[:16]
+
+
+def save_to_cache(key: str, df: pd.DataFrame, topic: str) -> None:
+    d = _cache_dir()
+    df.to_parquet(os.path.join(d, f"{key}.parquet"))
+    meta = {"key": key, "topic": topic, "count": int(len(df)), "created": time.time()}
+    with open(os.path.join(d, f"{key}.json"), "w") as f:
+        json.dump(meta, f)
+
+
+def load_from_cache(key: str) -> Optional[pd.DataFrame]:
+    p = os.path.join(_cache_dir(), f"{key}.parquet")
+    if os.path.exists(p):
+        try:
+            return pd.read_parquet(p)
+        except Exception as e:
+            log.warning("corpus cache read failed (%s): %s", key, e)
+    return None
+
+
+def load_last() -> tuple[Optional[pd.DataFrame], Optional[str]]:
+    """Most recently cached corpus, for resuming after a restart/reload."""
+    metas = sorted(glob.glob(os.path.join(_cache_dir(), "*.json")),
+                   key=os.path.getmtime, reverse=True)
+    for m in metas:
+        try:
+            meta = json.load(open(m))
+            df = load_from_cache(meta["key"])
+            if df is not None:
+                return df, meta.get("topic")
+        except Exception:
+            continue
+    return None, None

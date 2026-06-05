@@ -9,6 +9,7 @@ import threading
 import time
 import uuid
 import webbrowser
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from pathlib import Path
 
@@ -22,8 +23,8 @@ from django.http import (
 from django.urls import path
 
 from app.config import CONFIG
-from app.corpus import save_corpus
-from app.download import download_many
+from app.corpus import cache_key, load_from_cache, load_last, save_corpus, save_to_cache
+from app.download import download_fulltext
 from app.ollama_client import chat, chat_stream, pick_model
 from app.openalex import fetch_metadata
 from app.retrieval import build_context
@@ -49,6 +50,12 @@ _LOCK = threading.Lock()
 DL: dict[str, object] = {"active": False, "done": 0, "total": 0, "avg_s": 0.0, "t0": 0.0}
 
 
+def _set_corpus(df, topic: str) -> None:
+    with _LOCK:
+        CORPUS["df"] = df
+        CORPUS["topic"] = topic
+
+
 def run_build(job_id: str, topic: str, date_from: str, date_to: str, n: int) -> None:
     job = JOBS[job_id]
     dl = CONFIG["download"]
@@ -56,10 +63,31 @@ def run_build(job_id: str, topic: str, date_from: str, date_to: str, n: int) -> 
     target = dl.get("ram_target_pct", 80)
     baseline = _mem_used_bytes()
     total_ram = _mem_limit_bytes()
-    state = {"done": 0, "oom": False}
+    workers = download_workers()
+    state = {"done": 0, "oom": False, "cancelled": False}
     log.info("Build start: topic=%r n=%d | download workers=%d | baseline RAM=%.2f GB / %.2f GB | "
              "abort if projected peak > %.0f%%",
-             topic, n, download_workers(), baseline / 1e9, total_ram / 1e9, guard * 100)
+             topic, n, workers, baseline / 1e9, total_ram / 1e9, guard * 100)
+
+    # Cache hit: identical request -> load instantly, no OpenAlex, no downloads.
+    key = cache_key(topic, date_from, date_to, n)
+    cached = load_from_cache(key)
+    if cached is not None and not job.get("cancel"):
+        _set_corpus(cached, topic)
+        with_text = int(cached["content"].notna().sum()) if "content" in cached else 0
+        log.info("Cache hit for %r: %d papers", topic, len(cached))
+        job.update(stage=f"Loaded {len(cached)} papers from cache ({with_text} with full text).",
+                   progress=100, done=True, cached=True)
+        return
+
+    def ram_guard_tripped(done: int) -> bool:
+        grown = max(0, _mem_used_bytes() - baseline)
+        if (baseline + grown * 2) / total_ram >= guard:
+            log.warning("RAM guard tripped at %d papers (projected peak >= %.0f%%)", done, guard * 100)
+            state["oom"] = True
+            return True
+        return False
+
     try:
         filters = []
         if date_from:
@@ -69,46 +97,63 @@ def run_build(job_id: str, topic: str, date_from: str, date_to: str, n: int) -> 
         extra = ",".join(filters) or None
 
         job.update(stage="Searching OpenAlex…", progress=4)
-        papers = list(fetch_metadata(n, search=topic or None, extra_filters=extra))
-        if not papers:
-            job.update(stage="No open-access papers matched that query.",
-                       progress=100, done=True, error=True)
-            return
+        DL.update(active=True, done=0, total=n, avg_s=0.0, t0=time.monotonic())
 
-        total = len(papers)
-        DL.update(active=True, done=0, total=total, avg_s=0.0, t0=time.monotonic())
+        # Pipeline: submit each paper for download as its metadata page streams in,
+        # so PDF fetches overlap the (sequential, cursor-paged) OpenAlex search.
+        papers, futures = [], {}
+        ex = ThreadPoolExecutor(max_workers=max(1, workers))
+        try:
+            for paper in fetch_metadata(n, search=topic or None, extra_filters=extra):
+                if job.get("cancel"):
+                    state["cancelled"] = True
+                    break
+                papers.append(paper)
+                futures[ex.submit(download_fulltext, paper)] = paper
+                job.update(stage=f"Found {len(papers)} papers… downloading in parallel", progress=5)
 
-        def on_progress(done, total, paper):
-            state["done"] = done
-            elapsed = time.monotonic() - DL["t0"]
-            DL.update(active=True, done=done, total=total,
-                      avg_s=(elapsed / done if done else 0.0))
-            job.update(stage=f"Downloaded {done}/{total}: {(paper.title or '')[:55]}…",
-                       progress=5 + int(90 * done / total))
+            total = len(papers)
+            if total == 0 and not state["cancelled"]:
+                job.update(stage="No open-access papers matched that query.",
+                           progress=100, done=True, error=True)
+                return
 
-        def stop(done):
-            # Abort before an OOM: the save step roughly doubles the corpus text,
-            # so project the eventual peak from the growth so far.
-            grown = max(0, _mem_used_bytes() - baseline)
-            projected = (baseline + grown * 2) / total_ram
-            if projected >= guard:
-                log.warning("RAM guard tripped at %d papers: projected peak %.0f%% >= %.0f%%",
-                            done, projected * 100, guard * 100)
-                state["oom"] = True
-                return True
-            return False
+            if not state["cancelled"]:
+                for fut in as_completed(futures):
+                    if job.get("cancel"):
+                        state["cancelled"] = True
+                        break
+                    state["done"] += 1
+                    done = state["done"]
+                    paper = futures[fut]
+                    try:
+                        fut.result()
+                    except Exception as e:
+                        log.warning("worker failed for %s: %s", paper.title, e)
+                    elapsed = time.monotonic() - DL["t0"]
+                    DL.update(active=True, done=done, total=total,
+                              avg_s=(elapsed / done if done else 0.0))
+                    job.update(stage=f"Downloaded {done}/{total}: {(paper.title or '')[:55]}…",
+                               progress=5 + int(90 * done / total))
+                    if ram_guard_tripped(done):
+                        break
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)
 
-        download_many(papers, workers=download_workers(), progress=on_progress, stop=stop)
         if state["oom"]:
             raise MemoryError
+        if state["cancelled"]:
+            log.info("Build cancelled at %d papers", state["done"])
+            job.update(stage=f"Cancelled — kept {state['done']} downloaded papers.",
+                       progress=100, done=True, error=True, cancelled=True)
+            return
 
         job.update(stage="Assembling dataset…", progress=97)
         log.info("Assembling DataFrame from %d papers…", total)
         df = pd.DataFrame([asdict(p) for p in papers])
-        with _LOCK:
-            CORPUS["df"] = df
-            CORPUS["topic"] = topic
+        _set_corpus(df, topic)
         save_corpus(df)
+        save_to_cache(key, df, topic)
         with_text = int(df["content"].notna().sum())
         log.info("Build done: %d papers, %d with full text, RAM now %.2f GB",
                  total, with_text, _mem_used_bytes() / 1e9)
@@ -152,7 +197,8 @@ def build(request):
     n = max(1, min(int(data.get("n", CONFIG["openalex"]["max_papers"])),
                    effective_max_papers()))
     job_id = uuid.uuid4().hex
-    JOBS[job_id] = {"stage": "Starting…", "progress": 0, "done": False, "error": False}
+    JOBS[job_id] = {"stage": "Starting…", "progress": 0, "done": False, "error": False,
+                    "cancel": False}
     threading.Thread(
         target=run_build,
         args=(job_id, topic, data.get("date_from", ""), data.get("date_to", ""), n),
@@ -166,6 +212,16 @@ def status(request):
     if job is None:
         return HttpResponseBadRequest("unknown job")
     return JsonResponse(job)
+
+
+def cancel(request):
+    if request.method != "POST":
+        return HttpResponseBadRequest("POST only")
+    job = JOBS.get(json.loads(request.body or "{}").get("job", ""))
+    if job is None:
+        return HttpResponseBadRequest("unknown job")
+    job["cancel"] = True
+    return JsonResponse({"ok": True})
 
 
 def ask(request):
@@ -317,6 +373,7 @@ urlpatterns = [
     path("", index),
     path("build", build),
     path("status", status),
+    path("cancel", cancel),
     path("ask", ask),
     path("ask_stream", ask_stream),
     path("suggest", suggest),
@@ -357,6 +414,11 @@ def run() -> None:
 
     log.info("=== Global Paper Research Assistant — starting ===")
     log_resources()
+    if CORPUS.get("df") is None:  # resume the most recent corpus after a restart
+        df, topic = load_last()
+        if df is not None:
+            _set_corpus(df, topic or "")
+            log.info("Resumed last corpus: topic=%r, %d papers", topic, len(df))
     log.info("Ollama: url=%s, model=%s", CONFIG["ollama"]["url"], pick_model() or "(none installed)")
     log.info("OpenAlex: mailto=%s, per_page=%d", CONFIG["openalex"]["mailto"], CONFIG["openalex"]["per_page"])
     log.info("Serving on %s", url)

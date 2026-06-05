@@ -95,6 +95,7 @@ function stopFun(ok){
 }
 
 // --- build ---
+let _jobId = null;
 $('go').onclick = async () => {
   const topic = $('topic').value.trim();
   if (!topic) { $('stage').textContent = 'Enter a topic first.'; return; }
@@ -104,9 +105,21 @@ $('go').onclick = async () => {
     topic, date_from: $('from').value, date_to: $('to').value, n: +$('n').value });
   if (error || !job_id) { $('stage').textContent = error || 'Failed to start.';
                           $('go').disabled = false; return; }
+  _jobId = job_id;
+  $('cancel').style.display = ''; $('cancel').disabled = false; $('cancel').textContent = 'Cancel';
   startFun(topic);
   poll(job_id);
 };
+
+$('cancel').onclick = async () => {
+  if (!_jobId) return;
+  $('cancel').disabled = true; $('cancel').textContent = 'Cancelling…';
+  try { await post('/cancel', { job: _jobId }); } catch (e) {}
+};
+
+// fleshed out in later phases (browse panel / notifications); safe no-ops for now
+function loadCorpus(){}
+function notifyDone(){}
 
 function poll(job) {
   const t = setInterval(async () => {
@@ -115,8 +128,10 @@ function poll(job) {
     $('stage').textContent = s.stage || '';
     updateETA(s.progress || 0);
     if (s.done) {
-      clearInterval(t); $('go').disabled = false; stopFun(!s.error);
-      if (!s.error) { $('qa').classList.remove('disabled'); $('q').focus(); }
+      clearInterval(t); _jobId = null;
+      $('go').disabled = false; $('cancel').style.display = 'none';
+      stopFun(!s.error);
+      if (!s.error) { $('qa').classList.remove('disabled'); $('q').focus(); loadCorpus(); notifyDone(s); }
       else if (s.suggested_n) { $('n').value = s.suggested_n; $('n').focus(); }
     }
   }, 500);

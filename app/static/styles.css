@@ -24,6 +24,8 @@ button { margin-top:14px; padding:10px 16px; background:var(--accent); color:#ff
          border:0; border-radius:8px; font-weight:600; cursor:pointer; font-size:14px;
          min-height:44px; }
 button:disabled { opacity:.5; cursor:not-allowed; }
+.btnrow { display:flex; gap:10px; } .btnrow > button { flex:1; margin-top:14px; }
+button.secondary { background:var(--input); color:var(--fg); border:1px solid var(--line); }
 .bar { height:10px; background:var(--input); border:1px solid var(--line); border-radius:6px;
        overflow:hidden; margin-top:14px; }
 .bar > i { display:block; height:100%; width:0; background:var(--accent); transition:width .3s; }

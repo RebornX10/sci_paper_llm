@@ -12,9 +12,12 @@ rf = RequestFactory()
 
 
 @pytest.fixture(autouse=True)
-def clear_state():
+def clear_state(monkeypatch):
     server.JOBS.clear()
     server.CORPUS.clear()
+    # keep build tests hermetic: no corpus-cache reads/writes to disk
+    monkeypatch.setattr(server, "load_from_cache", lambda key: None)
+    monkeypatch.setattr(server, "save_to_cache", lambda *a, **k: None)
     yield
     server.JOBS.clear()
     server.CORPUS.clear()
@@ -112,7 +115,7 @@ def test_build_rejects_get():
 def test_build_starts_job(monkeypatch):
     monkeypatch.setattr(server, "fetch_metadata",
                         lambda *a, **k: [Paper(openalex_id="W", doi=None, title="t")])
-    monkeypatch.setattr(server, "download_many", lambda papers, **k: papers)
+    monkeypatch.setattr(server, "download_fulltext", lambda p, **k: p)
     monkeypatch.setattr(server, "save_corpus", lambda df, *a, **k: None)
     resp = server.build(rf.post("/build", data=json.dumps({"topic": "x", "n": 1}),
                                 content_type="application/json"))
@@ -168,11 +171,10 @@ def test_index_shows_allocation_panel(monkeypatch):
 def test_build_handles_oom(monkeypatch):
     monkeypatch.setattr(server, "fetch_metadata",
                         lambda *a, **k: [Paper(openalex_id="W", doi=None, title="t")])
-
-    def boom(*a, **k):
-        raise MemoryError()
-
-    monkeypatch.setattr(server, "download_many", boom)
+    monkeypatch.setattr(server, "download_fulltext", lambda p, **k: p)
+    # force the RAM guard to trip (report memory as ~99% full)
+    total = server._mem_limit_bytes()
+    monkeypatch.setattr(server, "_mem_used_bytes", lambda: int(total * 0.99))
     resp = server.build(rf.post("/build", data=json.dumps({"topic": "x", "n": 5}),
                                 content_type="application/json"))
     done = _wait_done(json.loads(resp.content)["job_id"])
@@ -198,6 +200,20 @@ def test_suggest_is_topic_and_corpus_aware():
 
 def test_status_unknown_job():
     assert server.status(rf.get("/status?job=nope")).status_code == 400
+
+
+def test_cancel_sets_flag():
+    server.JOBS["j1"] = {"stage": "x", "progress": 10, "done": False, "error": False, "cancel": False}
+    resp = server.cancel(rf.post("/cancel", data=json.dumps({"job": "j1"}),
+                                 content_type="application/json"))
+    assert resp.status_code == 200
+    assert server.JOBS["j1"]["cancel"] is True
+
+
+def test_cancel_unknown_job():
+    resp = server.cancel(rf.post("/cancel", data=json.dumps({"job": "nope"}),
+                                 content_type="application/json"))
+    assert resp.status_code == 400
 
 
 def test_status_known_job():

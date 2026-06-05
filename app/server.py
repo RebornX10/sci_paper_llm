@@ -26,6 +26,9 @@ from app.system import (
 )
 
 TEMPLATE = (Path(__file__).parent / "templates" / "index.html").read_text()
+_STATIC = Path(__file__).parent / "static"
+APP_CSS = (_STATIC / "styles.css").read_text()
+APP_JS = (_STATIC / "app.js").read_text()
 
 JOBS: dict[str, dict] = {}
 CORPUS: dict[str, object] = {}
@@ -152,6 +155,14 @@ def metrics_view(request):
     return JsonResponse(metrics())
 
 
+def app_css(request):
+    return HttpResponse(APP_CSS, content_type="text/css")
+
+
+def app_js(request):
+    return HttpResponse(APP_JS, content_type="application/javascript")
+
+
 if not settings.configured:
     settings.configure(
         DEBUG=True,
@@ -167,6 +178,8 @@ urlpatterns = [
     path("status", status),
     path("ask", ask),
     path("metrics", metrics_view),
+    path("static/styles.css", app_css),
+    path("static/app.js", app_js),
 ]
 
 application = get_wsgi_application()

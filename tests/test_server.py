@@ -44,6 +44,22 @@ def test_index_shows_banner_without_model(monkeypatch):
     assert "ollama pull" in body
 
 
+def test_index_uses_external_assets(monkeypatch):
+    monkeypatch.setattr(server, "pick_model", lambda: "llama3.2")
+    body = server.index(rf.get("/")).content.decode()
+    assert "/static/styles.css" in body and "/static/app.js" in body
+    assert "<style>" not in body and "<script>" not in body
+
+
+def test_static_assets_served():
+    css = server.app_css(rf.get("/static/styles.css"))
+    js = server.app_js(rf.get("/static/app.js"))
+    assert css.status_code == 200 and css["Content-Type"] == "text/css"
+    assert b":root" in css.content
+    assert js.status_code == 200 and "javascript" in js["Content-Type"]
+    assert b"pollMetrics" in js.content
+
+
 def test_build_requires_topic():
     resp = server.build(rf.post("/build", data=json.dumps({}), content_type="application/json"))
     assert resp.status_code == 400

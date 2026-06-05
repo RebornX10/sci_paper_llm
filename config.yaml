@@ -9,18 +9,18 @@ openalex:
   default_search: null
   default_filters: "from_publication_date:2022-01-01"
   max_papers: 25
-  max_papers_cap: 10000
+  max_papers_cap: 100000   # hard ceiling; the RAM-based cap is usually the real limit
 
 download:
-  workers: 14 # number of cores to use for downloading and processing papers
-  paper_deadline_s: 45
+  workers: 32              # parallel download/parse workers (I/O-bound; can exceed core count)
+  paper_deadline_s: 30     # per-paper time budget (lower = faster, drops slow stragglers)
   max_pdf_bytes: 30000000
   connect_timeout: 5
   read_timeout: 40
   max_chars: 400000
   output_basename: papers
-  ram_fraction: 0.6        # fraction of available RAM the corpus may use
-  ram_per_paper_mb: 1.5    # measured memory budget per paper (full text + frames)
+  ram_fraction: 0.7        # fraction of available RAM the corpus may use (peak)
+  ram_per_paper_mb: 0.4    # peak memory budget per paper (text + save-time copy)
 
 ollama:
   url: http://localhost:11434

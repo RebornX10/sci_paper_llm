@@ -42,7 +42,7 @@ def _mem_used_bytes() -> int:
 
 def ram_paper_cap() -> int:
     dl = CONFIG["download"]
-    per_paper = max(1, dl.get("ram_per_paper_mb", 4)) * 1024 * 1024
+    per_paper = max(0.05, dl.get("ram_per_paper_mb", 4)) * 1024 * 1024
     frac = dl.get("ram_fraction", 0.4)
     return max(50, int(_mem_limit_bytes() * frac / per_paper))
 

@@ -6,7 +6,7 @@ SESSION = requests.Session()
 SESSION.headers.update(
     {"User-Agent": f"sci_paper_llm/1.0 (mailto:{CONFIG['openalex']['mailto']})"}
 )
-_adapter = requests.adapters.HTTPAdapter(pool_connections=32, pool_maxsize=32)
+_adapter = requests.adapters.HTTPAdapter(pool_connections=64, pool_maxsize=64)
 SESSION.mount("https://", _adapter)
 SESSION.mount("http://", _adapter)
 

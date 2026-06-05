@@ -21,6 +21,7 @@ download:
   io_workers_cap: 32       # ceiling on concurrent downloads (politeness + diminishing returns)
   thread_fraction: 0.8     # share of CPU threads for CPU-bound work (PDF parse sizing)
   paper_deadline_s: 15     # per-paper time budget (lower = faster, drops slow stragglers)
+  parse_in_process: false  # parse PDFs in a process pool (hard timeout / crash isolation)
   max_pdf_bytes: 80000000  # max PDF size read into memory (the per-download cache)
   connect_timeout: 5
   read_timeout: 20

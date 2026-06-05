@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import io
 import logging
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import (
+    ProcessPoolExecutor, ThreadPoolExecutor, TimeoutError as FuturesTimeout, as_completed,
+)
 from typing import Callable, Optional
 
 import fitz
@@ -11,7 +14,7 @@ import fitz
 from app.config import CONFIG
 from app.http import BROWSER_UA, SESSION
 from app.models import Paper
-from app.system import download_workers
+from app.system import available_cpus, download_workers
 
 log = logging.getLogger("download")
 
@@ -52,6 +55,58 @@ def _extract_text(data: bytes, max_chars: int, deadline: float) -> str:
     return "".join(parts)[:max_chars].strip()
 
 
+# Optional process-pool parsing (config download.parse_in_process). Parsing in a
+# separate process gives a hard wall-clock timeout — the one thing the in-thread
+# page-loop can't guarantee against a single hung get_text() — and isolates the
+# main process from a MuPDF crash. Off by default (spawn overhead, limited gain
+# on tiny hosts).
+_PP = None
+_PP_LOCK = threading.Lock()
+
+
+def _extract_worker(data: bytes, max_chars: int, deadline_s: float) -> str:
+    return _extract_text(data, max_chars, time.monotonic() + deadline_s)
+
+
+def _get_pool():
+    global _PP
+    with _PP_LOCK:
+        if _PP is None:
+            # parsing is CPU-bound; a few workers saturate the cores without
+            # paying to spawn (and re-import the app in) many heavy processes
+            _PP = ProcessPoolExecutor(max_workers=max(1, min(available_cpus(), 4)))
+        return _PP
+
+
+def _reset_pool() -> None:
+    global _PP
+    with _PP_LOCK:
+        if _PP is not None:
+            _PP.shutdown(wait=False, cancel_futures=True)
+            _PP = None
+
+
+def _extract(data: bytes, max_chars: int, deadline: float) -> str:
+    """Extract text in-thread, or in a process pool with a hard timeout when
+    download.parse_in_process is enabled."""
+    remaining = deadline - time.monotonic()
+    if not _DL.get("parse_in_process"):
+        return _extract_text(data, max_chars, deadline)
+    if remaining <= 0:
+        return ""
+    try:
+        fut = _get_pool().submit(_extract_worker, data, max_chars, remaining)
+        return fut.result(timeout=remaining + 5)
+    except FuturesTimeout:
+        log.warning("PDF parse hard-timeout in process pool; resetting pool")
+        _reset_pool()
+        return ""
+    except Exception as e:  # BrokenProcessPool etc. -> recover, fall back in-thread
+        log.warning("process-pool parse failed (%s); falling back in-thread", e)
+        _reset_pool()
+        return _extract_text(data, max_chars, deadline)
+
+
 def _fetch_pdf_bytes(url: str, deadline: float) -> Optional[bytes]:
     r = SESSION.get(
         url,
@@ -90,7 +145,7 @@ def download_fulltext(
             data = _fetch_pdf_bytes(url, deadline)
             if not data:
                 continue
-            text = _extract_text(data, max_chars, deadline)
+            text = _extract(data, max_chars, deadline)
             if text:
                 paper.content = text
                 paper.pdf_url = url

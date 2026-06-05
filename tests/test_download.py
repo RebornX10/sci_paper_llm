@@ -58,6 +58,48 @@ def test_extract_text_respects_deadline(pdf_bytes):
     assert download._extract_text(pdf_bytes, max_chars=10000, deadline=time.monotonic() - 1) == ""
 
 
+class _SyncFuture:
+    def __init__(self, value=None, exc=None):
+        self._v, self._e = value, exc
+
+    def result(self, timeout=None):
+        if self._e:
+            raise self._e
+        return self._v
+
+
+class _SyncPool:
+    """Runs submitted work synchronously (or raises) — stands in for the process pool."""
+    def __init__(self, exc=None):
+        self._e = exc
+
+    def submit(self, fn, *a):
+        if self._e is not None:
+            return _SyncFuture(exc=self._e)
+        return _SyncFuture(value=fn(*a))
+
+
+def test_extract_in_process_path(monkeypatch, pdf_bytes):
+    monkeypatch.setitem(download._DL, "parse_in_process", True)
+    monkeypatch.setattr(download, "_get_pool", lambda: _SyncPool())
+    assert "test PDF" in download._extract(pdf_bytes, 10000, time.monotonic() + 5)
+
+
+def test_extract_in_process_hard_timeout(monkeypatch, pdf_bytes):
+    from concurrent.futures import TimeoutError as FT
+    monkeypatch.setitem(download._DL, "parse_in_process", True)
+    monkeypatch.setattr(download, "_get_pool", lambda: _SyncPool(exc=FT()))
+    monkeypatch.setattr(download, "_reset_pool", lambda: None)
+    assert download._extract(pdf_bytes, 10000, time.monotonic() + 5) == ""
+
+
+def test_extract_in_process_broken_falls_back(monkeypatch, pdf_bytes):
+    monkeypatch.setitem(download._DL, "parse_in_process", True)
+    monkeypatch.setattr(download, "_get_pool", lambda: _SyncPool(exc=RuntimeError("broken")))
+    monkeypatch.setattr(download, "_reset_pool", lambda: None)
+    assert "test PDF" in download._extract(pdf_bytes, 10000, time.monotonic() + 5)
+
+
 def test_download_fulltext_success(monkeypatch, pdf_bytes, paper):
     monkeypatch.setattr(SESSION, "get", lambda *a, **k: _pdf_response(pdf_bytes))
     download.download_fulltext(paper)

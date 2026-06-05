@@ -109,8 +109,20 @@ def test_build_clamps_to_cap(monkeypatch):
 def test_metrics_endpoint():
     resp = server.metrics_view(rf.get("/metrics"))
     data = json.loads(resp.content)
-    for k in ("cpu", "ram", "net_kbps", "ram_used_mb", "ram_total_mb"):
+    for k in ("cpu", "ram", "net_kbps", "ram_used_mb", "ram_total_mb",
+              "ram_used_gb", "ram_total_gb", "dl_active", "dl_avg_s", "dl_done", "dl_total"):
         assert k in data
+
+
+def test_index_shows_allocation_panel(monkeypatch):
+    monkeypatch.setattr(server, "pick_model", lambda: "llama3.2")
+    body = server.index(rf.get("/")).content.decode()
+    assert "Allocation" in body
+    assert "Workers / threads" in body
+    assert "Avg speed / paper" in body
+    assert "RAM used (live)" in body
+    # placeholders must be substituted (no leftover template tokens)
+    assert "{{" not in body
 
 
 def test_build_handles_oom(monkeypatch):

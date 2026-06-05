@@ -41,6 +41,11 @@ button:disabled { opacity:.5; cursor:not-allowed; }
 .metric .top b { font-weight:600; }
 .metric canvas { width:100%; height:44px; display:block;
                  background:var(--input); border:1px solid var(--line); border-radius:6px; }
+/* allocation panel (under the graphs) */
+.alloc { border-top:1px solid var(--line); margin-top:2px; padding-top:12px; }
+.krow { display:flex; justify-content:space-between; gap:8px; font-size:12px; padding:5px 0; }
+.krow span { color:var(--muted); }
+.krow b { font-weight:600; font-variant-numeric:tabular-nums; text-align:right; }
 @media (max-width:780px){ .layout{ flex-direction:column; } .metrics{ width:100%; } }
 /* fun zone */
 .fun { display:none; text-align:center; margin-top:16px; }

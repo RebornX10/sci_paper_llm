@@ -5,6 +5,7 @@ import json
 import logging
 import sys
 import threading
+import time
 import uuid
 import webbrowser
 from dataclasses import asdict
@@ -23,8 +24,8 @@ from app.ollama_client import chat, pick_model
 from app.openalex import fetch_metadata
 from app.retrieval import build_context
 from app.system import (
-    _mem_limit_bytes, _mem_used_bytes, download_workers, effective_max_papers, log_resources,
-    metrics, papers_for_target,
+    _mem_limit_bytes, _mem_used_bytes, available_cpus, download_workers, effective_max_papers,
+    log_resources, metrics, papers_for_target,
 )
 
 log = logging.getLogger("server")
@@ -37,6 +38,9 @@ APP_JS = (_STATIC / "app.js").read_text()
 JOBS: dict[str, dict] = {}
 CORPUS: dict[str, object] = {}
 _LOCK = threading.Lock()
+
+# Live download stats for the System panel (polled via /metrics every second).
+DL: dict[str, object] = {"active": False, "done": 0, "total": 0, "avg_s": 0.0, "t0": 0.0}
 
 
 def run_build(job_id: str, topic: str, date_from: str, date_to: str, n: int) -> None:
@@ -66,9 +70,13 @@ def run_build(job_id: str, topic: str, date_from: str, date_to: str, n: int) -> 
             return
 
         total = len(papers)
+        DL.update(active=True, done=0, total=total, avg_s=0.0, t0=time.monotonic())
 
         def on_progress(done, total, paper):
             state["done"] = done
+            elapsed = time.monotonic() - DL["t0"]
+            DL.update(active=True, done=done, total=total,
+                      avg_s=(elapsed / done if done else 0.0))
             job.update(stage=f"Downloaded {done}/{total}: {(paper.title or '')[:55]}…",
                        progress=5 + int(90 * done / total))
 
@@ -110,13 +118,21 @@ def run_build(job_id: str, topic: str, date_from: str, date_to: str, n: int) -> 
     except Exception as e:
         log.exception("Build failed")
         job.update(stage=f"Error: {e}", progress=100, done=True, error=True)
+    finally:
+        DL["active"] = False  # keep last avg_s/done for display, just stop the clock
 
 
 def index(request):
     model = pick_model()
     banner = "" if model else "No Ollama model found. Run `ollama pull llama3.2`, then reload."
+    cap = effective_max_papers()
+    ram_alloc = _mem_limit_bytes() * CONFIG["download"].get("ram_fraction", 0.85) / 1e9
     page = TEMPLATE.replace("{{MODEL}}", html.escape(model or "none"))
-    page = page.replace("{{MAX_PAPERS}}", str(effective_max_papers()))
+    page = page.replace("{{MAX_PAPERS_FMT}}", f"{cap:,}")
+    page = page.replace("{{MAX_PAPERS}}", str(cap))
+    page = page.replace("{{WORKERS}}", str(download_workers()))
+    page = page.replace("{{CPU_THREADS}}", str(available_cpus()))
+    page = page.replace("{{RAM_ALLOC}}", f"{ram_alloc:.1f}")
     return HttpResponse(page.replace("{{BANNER}}", html.escape(banner)))
 
 
@@ -167,7 +183,14 @@ def ask(request):
 
 
 def metrics_view(request):
-    return JsonResponse(metrics())
+    m = metrics()
+    m["ram_used_gb"] = round(m["ram_used_mb"] / 1024, 2)
+    m["ram_total_gb"] = round(m["ram_total_mb"] / 1024, 2)
+    m["dl_active"] = bool(DL["active"])
+    m["dl_avg_s"] = round(float(DL["avg_s"]), 2)
+    m["dl_done"] = int(DL["done"])
+    m["dl_total"] = int(DL["total"])
+    return JsonResponse(m)
 
 
 def app_css(request):

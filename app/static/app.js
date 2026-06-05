@@ -155,6 +155,7 @@ function spark(cv, data, fixedMax, color){
   ctx.globalAlpha = .15; ctx.fillStyle = color; ctx.fill(); ctx.globalAlpha = 1;
 }
 const fmtNet = k => k >= 1024 ? (k/1024).toFixed(1)+' MB/s' : Math.round(k)+' KB/s';
+const ramGbD = [];  // rolling window of live RAM-used (GB) for the running average
 async function pollMetrics(){
   try {
     const m = await (await fetch('/metrics')).json();
@@ -165,6 +166,19 @@ async function pollMetrics(){
     spark($('cpuG'), cpuD, 100, '#6ea8fe');
     spark($('ramG'), ramD, 100, '#3fb950');
     spark($('netG'), netD, 0,   '#e3b341');
+
+    // live RAM used (GB) + rolling average over the window
+    push(ramGbD, m.ram_used_gb);
+    const avgGb = ramGbD.reduce((a,b) => a+b, 0) / ramGbD.length;
+    $('ramUsed').textContent = m.ram_used_gb.toFixed(2) + ' GB (avg ' + avgGb.toFixed(2) + ')';
+
+    // average download speed per paper
+    if (m.dl_avg_s > 0) {
+      $('dlAvg').textContent = m.dl_avg_s.toFixed(2) + ' s/paper'
+        + (m.dl_active && m.dl_total ? '  (' + m.dl_done + '/' + m.dl_total + ')' : '');
+    } else {
+      $('dlAvg').textContent = m.dl_active ? 'starting…' : '–';
+    }
   } catch (e) {}
 }
 setInterval(pollMetrics, 1000); pollMetrics();

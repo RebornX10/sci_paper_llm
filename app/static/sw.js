@@ -2,7 +2,7 @@
 // App shell is precached; navigations are network-first (fresh model/cap when
 // online, cached shell when offline); static assets are stale-while-revalidate;
 // live API calls always hit the network and are never cached.
-const VERSION = 'v1';
+const VERSION = '__SWV__';   // replaced per-deploy with a hash of the app assets
 const CACHE = 'papers-ai-' + VERSION;
 const SHELL = [
   '/', '/static/styles.css', '/static/app.js', '/manifest.webmanifest',

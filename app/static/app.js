@@ -12,7 +12,8 @@ function applyTheme(t){
   const mc = document.getElementById('themeColor');   // keep the OS status bar in sync
   if (mc) mc.setAttribute('content', t === 'light' ? '#f5f7fb' : '#0f1117');
 }
-let theme = localStorage.getItem('theme') || 'dark';
+let theme = localStorage.getItem('theme') ||
+  (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
 applyTheme(theme);
 $('theme').onclick = () => { theme = theme === 'light' ? 'dark' : 'light';
   localStorage.setItem('theme', theme); applyTheme(theme); };
@@ -107,6 +108,9 @@ $('go').onclick = async () => {
                           $('go').disabled = false; return; }
   _jobId = job_id;
   $('cancel').style.display = ''; $('cancel').disabled = false; $('cancel').textContent = 'Cancel';
+  // ask (on this click gesture) for permission to notify when the build finishes
+  if ('Notification' in window && Notification.permission === 'default')
+    Notification.requestPermission().catch(() => {});
   startFun(topic);
   poll(job_id);
 };
@@ -165,7 +169,25 @@ $('corpusTable').addEventListener('click', e => {
   tr.after(det);
 });
 
-function notifyDone(){}   // fleshed out in the notifications phase
+// notify when a build finishes while the user is on another tab/app
+function notifyDone(s){
+  if (document.hasFocus() || !('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    new Notification('Papers AI', {
+      body: (s && s.stage) || 'Your corpus is ready.',
+      icon: '/static/icon-192.png',
+    });
+  } catch (e) {}
+}
+
+// keyboard shortcuts: "/" focuses the topic box, Cmd/Ctrl+Enter asks
+document.addEventListener('keydown', e => {
+  const typing = /^(input|textarea)$/i.test(e.target.tagName || '');
+  if (e.key === '/' && !typing) { e.preventDefault(); $('topic').focus(); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !$('qa').classList.contains('disabled')) {
+    e.preventDefault(); $('ask').click();
+  }
+});
 
 loadCorpus();   // resume: show any already-loaded corpus on page load
 
@@ -414,6 +436,7 @@ function spark(cv, data, fixedMax, color){
 const fmtNet = k => k >= 1024 ? (k/1024).toFixed(1)+' MB/s' : Math.round(k)+' KB/s';
 const ramGbD = [];  // rolling window of live RAM-used (GB) for the running average
 async function pollMetrics(){
+  if (document.hidden) return;   // don't poll/redraw while the tab is in the background
   try {
     const m = await (await fetch('/metrics')).json();
     push(cpuD, m.cpu); push(ramD, m.ram); push(netD, m.net_kbps);
@@ -439,6 +462,7 @@ async function pollMetrics(){
   } catch (e) {}
 }
 setInterval(pollMetrics, 1000); pollMetrics();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pollMetrics(); });
 
 // --- PWA: service worker + install prompt ---
 if ('serviceWorker' in navigator) {

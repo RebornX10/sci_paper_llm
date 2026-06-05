@@ -87,6 +87,7 @@ def test_service_worker_served():
     assert "javascript" in resp["Content-Type"]
     assert resp["Service-Worker-Allowed"] == "/"
     assert b"caches" in resp.content
+    assert b"__SWV__" not in resp.content  # version placeholder must be substituted
 
 
 def test_static_asset_serves_icon():

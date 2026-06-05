@@ -42,7 +42,11 @@ _STATIC = Path(__file__).parent / "static"
 APP_CSS = (_STATIC / "styles.css").read_text()
 APP_JS = (_STATIC / "app.js").read_text()
 MANIFEST = (_STATIC / "manifest.webmanifest").read_text()
-SW_JS = (_STATIC / "sw.js").read_text()
+# Inject an asset-hash version so the service worker cache auto-busts whenever the
+# HTML/CSS/JS/manifest change (otherwise clients keep serving stale shells).
+_SW_VERSION = __import__("hashlib").sha1(
+    (APP_CSS + APP_JS + TEMPLATE + MANIFEST).encode()).hexdigest()[:8]
+SW_JS = (_STATIC / "sw.js").read_text().replace("__SWV__", _SW_VERSION)
 
 JOBS: dict[str, dict] = {}
 CORPUS: dict[str, object] = {}

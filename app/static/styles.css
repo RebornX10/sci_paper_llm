@@ -131,3 +131,8 @@ button.secondary { background:var(--input); color:var(--fg); border:1px solid va
 .bounce span:nth-child(5){ animation-delay:.48s; }
 @keyframes bob { 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-10px); } }
 .quip { color:var(--muted); font-size:13px; font-style:italic; min-height:18px; transition:opacity .25s; }
+/* respect users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce){
+  .bounce span { animation:none; }
+  body, .quip, .bar > i, #abar { transition:none; }
+}

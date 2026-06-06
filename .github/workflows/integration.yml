@@ -1,0 +1,30 @@
+name: ollama-integration
+
+# Heavy (installs Ollama + pulls models), so it's opt-in: run from the Actions tab.
+on:
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Install and start Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve &
+          until curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 1; done
+          ollama pull qwen2.5:0.5b
+          ollama pull nomic-embed-text
+      - name: Run tests (incl. live Ollama integration)
+        env:
+          RUN_OLLAMA_INTEGRATION: "1"
+          OLLAMA_MODEL: qwen2.5:0.5b
+          RERANK: "on"
+        run: pytest -q

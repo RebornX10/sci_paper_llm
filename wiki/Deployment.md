@@ -54,5 +54,22 @@ On push/PR to `master`:
 
 Both must pass for the CI badge to be green.
 
+## PWA & offline behaviour
+The app is an installable PWA. The web manifest is served at `/manifest.webmanifest` and the service worker at `/sw.js` (root scope). Caching strategy (`app/static/sw.js`):
+
+- **App shell** (`/`, CSS, JS, icons, manifest) is precached on install.
+- **Navigations** are network-first, falling back to the cached shell when offline — so the UI still loads without a connection.
+- **Static assets** use stale-while-revalidate.
+- **Live API calls** (`/build`, `/ask_stream`, `/events`, `/corpus*`, `/download/*`, `/stats`, …) are never cached — they always hit the network.
+
+The cache name embeds an asset hash injected by the server (`_SW_VERSION`), so deploying changed HTML/CSS/JS automatically busts old caches; no manual version bump needed. Note that **building corpora and asking questions require connectivity** (OpenAlex/arXiv + Ollama); offline mode only guarantees the shell loads.
+
+**Install:** open the app over HTTPS (e.g. the Hugging Face Space URL) → browser "Install app" / "Add to Home Screen". Installation isn't offered inside a cross-origin iframe (e.g. the embed on the Pages site) — use the Space URL directly.
+
+## Continuous integration
+- **ci.yml** (push/PR): unit tests + a Docker build. Ollama is mocked, so it's fast.
+- **ollama-integration.yml** (manual, Actions tab): installs Ollama, pulls `qwen2.5:0.5b` + `nomic-embed-text`, and runs the suite with `RUN_OLLAMA_INTEGRATION=1` to exercise the real chat/embedding path.
+- **Dependabot** (`.github/dependabot.yml`): weekly pip + github-actions update PRs.
+
 ## Releases
 Tagged with annotated git tags (e.g. `v0.1.0`). Create a GitHub Release from a tag in the UI (or with `gh release create`).

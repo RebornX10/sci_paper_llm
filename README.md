@@ -15,13 +15,13 @@ Papers come from [OpenAlex](https://openalex.org) (a free, open index of ~250M s
 
 ## Features
 
-- 🔎 Search any topic with an optional date range (cancellable, with a live progress bar + ETA)
-- ⬇️ Parallel PDF download + full-text extraction, pipelined with the OpenAlex search
+- 🔎 Search any topic from **OpenAlex or arXiv**, with an optional date range (cancellable, live progress + ETA)
+- ⬇️ Parallel PDF download + full-text extraction, pipelined with the search; incremental Parquet checkpoints
 - 🏷️ Automatic `theme` tag per paper (OpenAlex topic; optional Claude tagging)
-- 💬 Ask questions answered by your global Ollama model — **streamed token-by-token**, rendered as Markdown with hoverable inline citations, grounded in the papers via **BM25** retrieval (optional embedding re-rank)
-- 🗂️ Browse the corpus in a filterable table and download it as **CSV / Parquet**
-- 🔀 **Switch between built topics** instantly; identical requests load from an on-disk **cache** and the last corpus **resumes** after a restart
-- 📊 Live system panel via **SSE push** (CPU / RAM / network / download speed), with a polling fallback
+- 💬 Ask questions answered by your global Ollama model — **streamed token-by-token**, Markdown with hoverable inline citations, grounded via **chunk-level BM25** retrieval (optional **embedding re-rank** + **multi-query fusion**), with an optional **claim-verification** pass
+- 🗂️ Browse the corpus in a sortable/filterable table (citation impact) and export **CSV / Parquet / BibTeX / RIS**
+- 🔀 **Switch between built topics** instantly; **shareable `?corpus=` links**; on-disk **cache** + **resume** after restart
+- 📊 Live system panel via **SSE push** (CPU / RAM / network / download speed) with a polling fallback; cumulative `/stats`
 - 📱 Installable PWA — responsive UI, works on mobile browsers, add to home screen, offline app shell
 - 🐳 Fully containerised — bundled Ollama + app via Docker Compose
 - ☁️ Runs free in GitHub Codespaces

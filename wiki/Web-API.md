@@ -25,7 +25,8 @@ Start a corpus build. Runs asynchronously in a background thread and returns imm
 ```
 - `topic` (required) — free-text query.
 - `n` — number of papers; clamped to `1..max_papers_cap`.
-- `date_from` / `date_to` — optional; become OpenAlex `from_publication_date` / `to_publication_date` filters.
+- `date_from` / `date_to` — optional; become OpenAlex `from_publication_date` / `to_publication_date` filters (ignored by arXiv).
+- `source` — `openalex` (default) or `arxiv`.
 
 **Response:** `{"job_id": "<hex>"}` (or `400` if `topic` is missing).
 
@@ -98,14 +99,17 @@ Summary + a page of the current corpus, for the browse panel.
 ## `GET /corpora` · `POST /corpus/select`
 Multi-corpus switcher. `GET /corpora` lists previously built corpora from the cache: `{"current": "<key>", "items": [{"key","topic","count","created"}]}`. `POST /corpus/select {"key": "..."}` makes one of them the active corpus (from an in-memory LRU or the on-disk cache); `404` if the key is unknown.
 
-## `GET /download/csv` · `GET /download/parquet`
-Download the current corpus as a file (`Content-Disposition: attachment`, topic-slugged filename). `404` if no corpus is loaded.
+## `GET /download/csv` · `/download/parquet` · `/download/bibtex` · `/download/ris`
+Download the current corpus as a file (`Content-Disposition: attachment`, topic-slugged filename): CSV, Parquet, BibTeX (`.bib`), or RIS (`.ris`, for Zotero/EndNote). `404` if no corpus is loaded.
 
 ## `GET /suggest`
 Question-bar completions: generic templates plus topic- and corpus-aware questions. `{"suggestions": ["..."]}`.
 
 ## `GET /metrics`
 Live system metrics: `cpu`, `ram`, `net_kbps`, `ram_used_gb`/`ram_total_gb`, and download stats `dl_active`/`dl_avg_s`/`dl_done`/`dl_total`. Used as the polling fallback.
+
+## `GET /stats`
+Cumulative observability counters: `uptime_s`, `builds`, `papers`, `with_text`, `questions`, `last_build_s`, `avg_retrieval_ms`, `avg_answer_ms`.
 
 ## `GET /events?job=<id>`
 Server-Sent-Events push that the UI uses instead of polling: each ~1s tick is `data: {"metrics": {…}}`, and if `job` is given, also `"status": {…}` (the same shape as `/status`). The stream ends when the job finishes. The client falls back to polling `/metrics` + `/status` if EventSource never connects.

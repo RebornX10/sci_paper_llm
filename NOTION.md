@@ -89,13 +89,21 @@ A privacy-friendly, fully-local research assistant: search open-access papers (O
 **Retrieval & answering**
 - Streamed answers over SSE (`/ask_stream`) + Markdown rendering + inline citations
 - BM25 retrieval over full text with best-passage excerpts (replaced naive term-frequency)
-- Optional embedding re-rank of BM25 candidates (Ollama embeddings, BM25 fallback)
+- Chunk-level indexing (passage retrieval on long papers)
+- Optional embedding re-rank of BM25 candidates (Ollama embeddings, BM25 fallback) + content-addressed embedding cache
+- Multi-query expansion with reciprocal-rank fusion (config-gated)
+- Claim → source verification pass (config-gated SSE `verify` event)
 - Predictive sentence completion + answer-time estimate
+- RAG evaluation harness (`tools/rag_eval.py`)
 
 **Corpus & data**
-- Pipelined build + on-disk corpus cache + resume + cancel
-- Browse panel + CSV/Parquet download (`/corpus`, `/download/*`)
-- Multi-corpus topic switcher (`/corpora`, `/corpus/select`, in-memory LRU)
+- Pipelined build + on-disk corpus cache + resume + cancel + incremental Parquet checkpoints
+- Browse panel + sortable citation column + CSV / Parquet / BibTeX / RIS export
+- Multi-corpus topic switcher (`/corpora`, `/corpus/select`, in-memory LRU) + shareable `?corpus=` deep-links
+- Observability counters at `/stats`
+
+**Sources**
+- OpenAlex + arXiv adapters behind a Source selector
 
 **Performance & robustness**
 - Download speed optimization (I/O oversubscription, deadlines, chunking) — ~6×
@@ -195,29 +203,29 @@ A privacy-friendly, fully-local research assistant: search open-access papers (O
 
 ## 7) To-do list
 
-**Now**
-- [ ] Add `ollama pull nomic-embed-text` to the HF Dockerfile + set `rerank: on` to make embeddings live on the Space
-- [ ] Add a relevance indicator to the browse table
-- [ ] Document embeddings setup in the wiki (Configuration + Setup)
+**Now** — done
+- [x] HF Space pulls `nomic-embed-text` at startup so embedding re-rank is live (`rerank: auto`)
+- [x] Relevance indicator in the browse table (sortable OpenAlex citation count)
+- [x] Embeddings setup documented in the wiki (Configuration env vars + tuning note)
 
-**Next**
-- [ ] Persistent embedding cache (store vectors alongside the corpus parquet)
-- [ ] Multi-query expansion in `build_context`
-- [ ] Chunk long documents for indexing
-- [ ] Claim → source verification pass on answers
-- [ ] RAG evaluation harness (golden Q→A set + scoring)
+**Next** — done
+- [x] Persistent embedding cache (content-addressed `<cache>/embeddings.json`)
+- [x] Multi-query expansion + reciprocal-rank fusion in `build_context`
+- [x] Chunk-level indexing for long documents
+- [x] Claim → source verification pass (config `verify`, SSE `verify` event)
+- [x] RAG evaluation harness (`tools/rag_eval.py` + golden set + scoring)
 
-**Later**
-- [ ] Add arXiv / PubMed / Crossref source adapters
-- [ ] Streaming-to-disk (incremental Parquet) build path
-- [ ] Export to BibTeX / Zotero / Notion
-- [ ] Saved/shareable sessions
-- [ ] Observability dashboard (retrieval + timing metrics)
+**Later** — done / partial
+- [x] arXiv source adapter + Source selector  · ⬜ PubMed / Crossref adapters (next)
+- [x] Incremental Parquet checkpoints during build (`checkpoint_every`)  · ⬜ full streaming-to-disk rearchitecture
+- [x] Export to BibTeX + RIS (Zotero/EndNote); Notion snapshot is this file
+- [x] Saved/shareable corpora via `?corpus=<key>` deep-link + Share button
+- [x] Observability: `/stats` endpoint (builds, papers, timings)  · ⬜ in-UI dashboard
 
-**Ops / hygiene**
-- [ ] CI integration job with a real Ollama model
-- [ ] Bump SW cache strategy docs; verify offline shell on mobile
-- [ ] Periodic dependency updates
+**Ops / hygiene** — done
+- [x] Opt-in CI integration job with a real Ollama model (`ollama-integration.yml`)
+- [x] SW cache strategy + offline behaviour documented (wiki Deployment)
+- [x] Periodic dependency updates (Dependabot: pip + github-actions, weekly)
 
 ---
 
@@ -229,14 +237,14 @@ A privacy-friendly, fully-local research assistant: search open-access papers (O
 |---|---|---|---|---|
 | **Orchestrator** | Routes a user request to the right agents; plans multi-step tasks | question/goal → agent calls | small local LLM | ⬜ |
 | **Query Planner** | Decomposes a question into sub-queries / search terms | question → sub-queries, filters | small local LLM | ⬜ |
-| **Retrieval Agent** | Hybrid BM25 + embedding (+ optional cross-encoder), multi-query fusion | query → ranked passages | embeddings + reranker | 🟡 (BM25 + embed re-rank) |
-| **Summarization Agent** | Per-paper and corpus-level synthesis | passages → summaries | local LLM | 🟡 (answers exist) |
+| **Retrieval Agent** | Hybrid BM25 + embedding (+ optional cross-encoder), multi-query fusion | query → ranked passages | embeddings + reranker | 🟡 (BM25 chunks + embed re-rank + multi-query RRF + embed cache) |
+| **Summarization Agent** | Per-paper and corpus-level synthesis | passages → summaries | local LLM | 🟡 (streamed answers exist) |
 | **Tagging / Theme Agent** | Generate consistent theme/topic tags + taxonomy | title/abstract → tags | OpenAlex topic / Claude | ✅ (theme tagging) |
-| **Citation / Verification Agent** | Check each claim against retrieved sources; flag unsupported | answer + sources → verified answer | local LLM | ⬜ |
+| **Citation / Verification Agent** | Check each claim against retrieved sources; flag unsupported | answer + sources → verified answer | local LLM | 🟡 (verify pass, config-gated) |
 | **Literature-Review Agent** | Produce structured reviews / comparison tables | corpus + outline → report | local LLM | ⬜ |
 | **Data-Quality Agent** | De-dup, metadata cleanup, language/quality filters | corpus → cleaned corpus | rules + small LLM | ⬜ |
-| **Ingestion / Crawler Agent** | Pull from multiple sources, normalize, resolve PDFs | topic → papers | rules + APIs | 🟡 (OpenAlex only) |
-| **Evaluation Agent** | Score answer quality / retrieval hit-rate; regression gate | Q/A set → metrics | LLM-as-judge | ⬜ |
+| **Ingestion / Crawler Agent** | Pull from multiple sources, normalize, resolve PDFs | topic → papers | rules + APIs | 🟡 (OpenAlex + arXiv) |
+| **Evaluation Agent** | Score answer quality / retrieval hit-rate; regression gate | Q/A set → metrics | LLM-as-judge | 🟡 (rag_eval harness) |
 
 **Shared infrastructure the agents will need**
 - A tool/function interface (search, fetch, embed, summarize, cite)
